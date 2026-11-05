@@ -38,6 +38,12 @@ describe("dialog display values", () => {
 })
 
 describe("dialog status copy", () => {
+  it("distinguishes a cached answer from a live one", () => {
+    expect(q().status).toBe("ok")
+    expect(q({ cached: true, ageSeconds: 12 }).status).toBe("cached")
+    expect(q({ cached: true, ageSeconds: 12 }).ageSeconds).toBe(12)
+  })
+
   it("marks an upstream failure as stale rather than live", () => {
     const v = q({ stale: true, error: "upstream HTTP 500" })
     expect(v.status).toBe("stale")

@@ -15,6 +15,10 @@ export interface Reading {
   fetchedAt: string | null
   stale: boolean
   error: string | null
+  /** This answer was served from the cache; the upstream was not called. */
+  cached: boolean
+  /** How old the numbers are, in whole seconds. Null when there are no numbers. */
+  ageSeconds: number | null
 }
 
 export interface QuotaSource {
@@ -39,6 +43,8 @@ const EMPTY: Reading = {
   fetchedAt: null,
   stale: false,
   error: null,
+  cached: false,
+  ageSeconds: null,
 }
 
 /**
@@ -64,12 +70,32 @@ export function createQuotaSource(deps: QuotaSourceDeps): QuotaSource {
   let lastError: string | null = null
   let inflight: Promise<Reading> | null = null
 
-  const fresh = (reading: UpstreamReading): Reading => ({ ...reading, stale: false, error: null })
+  const ageOf = (at: number) => Math.max(0, Math.round((now() - at) / 1000))
+
+  const fresh = (reading: UpstreamReading): Reading => ({
+    ...reading,
+    stale: false,
+    error: null,
+    cached: false,
+    ageSeconds: 0,
+  })
+
+  // A cache hit still carries the numbers, but says so, so the GUI never labels
+  // a 25-second-old figure as live.
+  const fromCache = (entry: { reading: UpstreamReading; at: number }): Reading => ({
+    ...entry.reading,
+    stale: false,
+    error: null,
+    cached: true,
+    ageSeconds: ageOf(entry.at),
+  })
 
   // The last good numbers survive a failed refresh so the GUI can show "stale"
   // with the real figure instead of blanking out.
   const fallback = (error: string): Reading =>
-    cached ? { ...cached.reading, stale: true, error } : { ...EMPTY, stale: true, error: error }
+    cached
+      ? { ...cached.reading, stale: true, error, cached: false, ageSeconds: ageOf(cached.at) }
+      : { ...EMPTY, stale: true, error: error }
 
   const load = async (signal?: AbortSignal): Promise<Reading> => {
     try {
@@ -91,7 +117,7 @@ export function createQuotaSource(deps: QuotaSourceDeps): QuotaSource {
       // A signal that is already cancelled must not start or join any work.
       if (signal?.aborted) return fallback(String(signal.reason ?? "aborted"))
 
-      if (cached && now() - cached.at < minRefreshMs) return fresh(cached.reading)
+      if (cached && now() - cached.at < minRefreshMs) return fromCache(cached)
       if (failedAt !== null && now() - failedAt < minRefreshMs) {
         return fallback(lastError ?? "upstream unavailable")
       }

@@ -1,4 +1,4 @@
-export type QuotaStatus = "ok" | "stale" | "error"
+export type QuotaStatus = "ok" | "cached" | "stale" | "error"
 
 export interface Quota {
   status: QuotaStatus
@@ -12,6 +12,8 @@ export interface Quota {
   cycleEnd: string | null
   resetAt: string | null
   fetchedAt: string | null
+  /** Age of the numbers in whole seconds, as the server counted it. */
+  ageSeconds: number | null
   error: string | null
 }
 
@@ -54,6 +56,7 @@ function empty(status: QuotaStatus, error: string | null): Quota {
     cycleEnd: null,
     resetAt: null,
     fetchedAt: null,
+    ageSeconds: null,
     error,
   }
 }
@@ -123,7 +126,9 @@ export function normalizeQuota(payload: unknown, ctx: NormalizeContext): Quota {
   const diff =
     usedPct !== null && timePct !== null && Number.isFinite(timePct) ? round2(usedPct - timePct) : null
 
-  const status: QuotaStatus = data.stale === true ? "stale" : "ok"
+  const status: QuotaStatus =
+    data.stale === true ? "stale" : data.cached === true ? "cached" : "ok"
+  const ageSeconds = num(data.ageSeconds)
 
   return {
     status,
@@ -137,6 +142,7 @@ export function normalizeQuota(payload: unknown, ctx: NormalizeContext): Quota {
     cycleEnd,
     resetAt,
     fetchedAt,
+    ageSeconds: ageSeconds === null ? null : Math.round(ageSeconds),
     error: error ?? null,
   }
 }

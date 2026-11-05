@@ -4,6 +4,10 @@ import type { Reading } from "./quota-source"
 export interface WireReading {
   ok: boolean
   stale: boolean
+  /** Served from the 30-second cache: the numbers are real but not from this call. */
+  cached: boolean
+  /** How old the numbers are, in whole seconds. */
+  ageSeconds: number | null
   remaining: number | null
   used: number | null
   total: number | null
@@ -36,6 +40,8 @@ export function toWireReading(reading: Reading): WireReading {
     return {
       ok: false,
       stale: true,
+      cached: false,
+      ageSeconds: null,
       ...numbers,
       remaining: null,
       used: null,
@@ -46,5 +52,5 @@ export function toWireReading(reading: Reading): WireReading {
       fetchedAt: null,
     }
   }
-  return { ok: true, stale: reading.stale, ...numbers }
+  return { ok: true, stale: reading.stale, cached: reading.cached, ageSeconds: reading.ageSeconds, ...numbers }
 }

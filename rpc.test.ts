@@ -12,10 +12,10 @@ describe("CodebuddyQuota contract", () => {
       additionalProperties: boolean
       properties: Record<string, unknown>
     }
-    expect(out.required).toEqual(["ok", "stale"])
+    expect(out.required).toEqual(["ok", "stale", "cached"])
     expect(out.additionalProperties).toBe(false)
     expect(Object.keys(out.properties).sort()).toEqual([
-      "cycleEnd", "cycleStart", "error", "fetchedAt", "ok", "remaining", "resetAt", "stale", "total", "used",
+      "ageSeconds", "cached", "cycleEnd", "cycleStart", "error", "fetchedAt", "ok", "remaining", "resetAt", "stale", "total", "used",
     ])
   })
 })

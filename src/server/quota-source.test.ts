@@ -159,6 +159,48 @@ describe("createQuotaSource", () => {
     release()
   })
 
+  it("marks a cached answer as cached and reports its age", async () => {
+    const c = clock()
+    let calls = 0
+    const src = createQuotaSource({
+      now: c.now,
+      fetchUpstream: async () => {
+        calls += 1
+        return reading(6000)
+      },
+    })
+    const first = await src.read()
+    expect(first.cached).toBe(false)
+    expect(first.ageSeconds).toBe(0)
+
+    c.advance(12_000)
+    const second = await src.read()
+    expect(calls).toBe(1)
+    expect(second.cached).toBe(true)
+    expect(second.ageSeconds).toBe(12)
+    // A cache hit is still live data, not a failure.
+    expect(second.stale).toBe(false)
+  })
+
+  it("does not call a failed refresh cached, even though it serves old numbers", async () => {
+    const c = clock()
+    let fail = false
+    const src = createQuotaSource({
+      now: c.now,
+      fetchUpstream: async () => {
+        if (fail) throw new Error("upstream HTTP 500")
+        return reading(6000)
+      },
+    })
+    await src.read()
+    c.advance(40_000)
+    fail = true
+    const r = await src.read()
+    expect(r.stale).toBe(true)
+    expect(r.cached).toBe(false)
+    expect(r.ageSeconds).toBe(40)
+  })
+
   it("passes the caller's signal through to the upstream call", async () => {
     const controller = new AbortController()
     let seen: AbortSignal | undefined

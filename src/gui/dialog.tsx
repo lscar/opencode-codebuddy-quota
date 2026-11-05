@@ -25,6 +25,8 @@ function statusText(q: Quota): string {
   switch (q.status) {
     case "ok":
       return "实时"
+    case "cached":
+      return q.ageSeconds === null ? "缓存" : `缓存（${q.ageSeconds} 秒前）`
     case "stale":
       return "过期"
     case "error":

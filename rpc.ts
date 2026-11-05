@@ -27,6 +27,10 @@ export const CodebuddyQuota = Rpc.define({
           // says whether the latest attempt to refresh it failed.
           ok: { type: "boolean" },
           stale: { type: "boolean" },
+          // The answer came from the server's 30-second cache, so the numbers are
+          // real but this call did not reach the upstream.
+          cached: { type: "boolean" },
+          ageSeconds: nullableNumber,
           remaining: nullableNumber,
           used: nullableNumber,
           total: nullableNumber,
@@ -37,7 +41,7 @@ export const CodebuddyQuota = Rpc.define({
           fetchedAt: nullableString,
           error: nullableString,
         },
-        required: ["ok", "stale"],
+        required: ["ok", "stale", "cached"],
         additionalProperties: false,
       },
     },
