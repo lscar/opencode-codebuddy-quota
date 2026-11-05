@@ -1,7 +1,8 @@
 import type { JSX } from "solid-js"
 import { createSignal, onMount } from "solid-js"
 import { daysLeftInCycle } from "./days"
-import { formatCredits, formatPct, paceColor, paceLabel, progressColor, signedPp, signedPpColor, type PaceLabel } from "./pace"
+import { formatCredits, formatPct, paceColor, paceLabel, type PaceLabel } from "./pace"
+import { PACE_CHIPS, paceChips } from "./pace-row"
 import { remainingPercent, remainingShare, timeLeftPercent, type Quota } from "./quota"
 
 export interface QuotaDialogProps {
@@ -169,21 +170,67 @@ export function QuotaDialog(props: QuotaDialogProps): JSX.Element {
 
           <div
             style={{
-              padding: "9px 12px",
-              "border-radius": "8px",
-              background: "rgba(128,128,128,.12)",
-              "font-size": "12px",
-              "line-height": "1.55",
               "margin-bottom": "12px",
             }}
           >
-            <b>{labelText[paceLabel(q())]}</b>
+            <div style={{ "font-size": "12px", "font-weight": "700", "margin-bottom": "8px" }}>
+              {labelText[paceLabel(q())]}
+            </div>
             {q().diff !== null && (
-              <>
-                {"  ·  "}使用进度：<b style={{ color: progressColor(q().usedPct) }}>{formatPct(q().usedPct)}</b>
-                {" | "}时间进度：<b style={{ color: progressColor(q().timePct) }}>{formatPct(q().timePct)}</b>
-                {" | "}偏差：<b style={{ color: signedPpColor(q().diff) }}>{signedPp(q().diff)}</b>
-              </>
+              // Equal columns: the label widths and value widths cancel each
+              // other, so the three chips carry the same optical weight.
+              <div style={{ display: "grid", "grid-template-columns": "repeat(3, 1fr)", gap: "8px" }}>
+                {paceChips(q()).map((chip) => (
+                  <div
+                    style={{
+                      position: "relative",
+                      background: "rgba(128,128,128,.10)",
+                      "border-radius": "6px",
+                      padding: "8px 10px 8px 13px",
+                      overflow: "hidden",
+                    }}
+                  >
+                    {/* The accent bar is the only thing that changes colour per
+                        chip, so a row of three stays readable when only one is
+                        in a warning band. */}
+                    <div
+                      style={{
+                        position: "absolute",
+                        left: "0",
+                        top: "0",
+                        bottom: "0",
+                        width: "3px",
+                        background: chip.color,
+                      }}
+                    />
+                    <div
+                      style={{
+                        display: "flex",
+                        "align-items": "baseline",
+                        gap: `${PACE_CHIPS.gap}px`,
+                      }}
+                    >
+                      <span style={{ "font-size": "11px", opacity: "0.62", "flex": "none" }}>
+                        {chip.label}
+                      </span>
+                      <span
+                        style={{
+                          "font-size": "15px",
+                          "font-weight": "700",
+                          "font-variant-numeric": "tabular-nums",
+                          color: chip.color,
+                          flex: "none",
+                          // Reserved at the widest value so three digits do not
+                          // nudge the row.
+                          "min-width": `${PACE_CHIPS.valueMinCh}ch`,
+                        }}
+                      >
+                        {chip.value}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
             )}
           </div>
 
