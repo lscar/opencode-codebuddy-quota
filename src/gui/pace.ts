@@ -61,3 +61,31 @@ export function formatCredits(value: number | null): string {
 export function formatPct(value: number | null): string {
   return value === null ? "—" : `${value.toFixed(2)}%`
 }
+
+/**
+ * Absolute progress, not pace: how much of the cycle's credits are spent, or how
+ * much of its time has elapsed. Both are coloured the same way, so the two bars
+ * in the dialog's status line can be compared at a glance.
+ */
+export function progressColor(value: number | null): string {
+  if (value === null || !Number.isFinite(value)) return NEUTRAL
+  if (value >= 50) return GREEN
+  if (value >= 20) return AMBER
+  return RED
+}
+
+/**
+ * The gap between spend and time, in percentage points, with the sign kept.
+ * A negative number means spending is behind the clock, which is the good case.
+ */
+export function signedPp(value: number | null): string {
+  if (value === null || !Number.isFinite(value)) return "—"
+  if (value === 0) return "0.00 pp"
+  return `${value > 0 ? "+" : "-"}${Math.abs(value).toFixed(2)} pp`
+}
+
+/** A negative gap is spending behind the clock, so it is not the warning colour. */
+export function signedPpColor(value: number | null): string {
+  if (value === null || !Number.isFinite(value)) return NEUTRAL
+  return value > 0 ? RED : GREEN
+}

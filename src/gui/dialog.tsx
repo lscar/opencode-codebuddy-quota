@@ -1,7 +1,7 @@
 import type { JSX } from "solid-js"
 import { createSignal, onMount } from "solid-js"
 import { daysLeftInCycle } from "./days"
-import { formatCredits, formatPct, paceColor, paceLabel, type PaceLabel } from "./pace"
+import { formatCredits, formatPct, paceColor, paceLabel, progressColor, signedPp, signedPpColor, type PaceLabel } from "./pace"
 import { remainingPercent, remainingShare, timeLeftPercent, type Quota } from "./quota"
 
 export interface QuotaDialogProps {
@@ -82,13 +82,6 @@ export function QuotaDialog(props: QuotaDialogProps): JSX.Element {
 
   const Dialog = props.ui.Dialog
   const Button = props.ui.Button
-
-  const pace = () => {
-    const diff = q().diff
-    if (diff === null) return ""
-    const word = diff > 0 ? "快" : "慢"
-    return `${word} ${Math.abs(diff).toFixed(2)} 个百分点`
-  }
 
   const body = () => (
     <div style={{ "min-width": "330px" }}>
@@ -186,8 +179,10 @@ export function QuotaDialog(props: QuotaDialogProps): JSX.Element {
             <b>{labelText[paceLabel(q())]}</b>
             {q().diff !== null && (
               <>
-                {"  ·  "}使用进度 <b>{formatPct(q().usedPct)}</b> / 时间进度{" "}
-                <b>{formatPct(q().timePct)}</b>，{pace()}
+                {"  ·  "}使用进度{" "}
+                <b style={{ color: progressColor(q().usedPct) }}>{formatPct(q().usedPct)}</b> / 时间进度{" "}
+                <b style={{ color: progressColor(q().timePct) }}>{formatPct(q().timePct)}</b>{" "}
+                <b style={{ color: signedPpColor(q().diff) }}>{signedPp(q().diff)}</b>
               </>
             )}
           </div>
