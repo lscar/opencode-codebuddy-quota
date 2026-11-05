@@ -252,13 +252,11 @@ export function QuotaDialog(props: QuotaDialogProps): JSX.Element {
                 {daysLeft(q().cycleEnd)}
               </span>
             </div>
-            <div style={row}>
-              <span style={key}>取数于</span>
-              <span style={val}>{clockOf(q().fetchedAt)}</span>
-            </div>
             <div style={{ ...row, "border-bottom": q().status === "stale" && q().error ? undefined : "none" }}>
-              <span style={key}>状态</span>
-              <span style={val}>{statusText(q())}</span>
+              <span style={key}>数据状态</span>
+              <span style={val}>
+                {clockOf(q().fetchedAt)} · {statusText(q())}
+              </span>
             </div>
             {/* A stale reading keeps its numbers, so the full error block above is
                 not shown; without this row the reason it went stale is invisible. */}
