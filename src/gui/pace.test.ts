@@ -22,12 +22,12 @@ const RED = "#f87171"
 
 describe("paceColor", () => {
   it("is pure green when spending slower than the clock", () => {
-    // used 10.78%, time 23.33% → diff -12.55
+    // used 10.78%, time 23.33% → diff = +12.55
     expect(paceColor(q())).toBe(GREEN)
   })
 
-  it("is pure red at diff >= 10", () => {
-    // 2400/7000 = 34.29% used vs 23.33% elapsed → diff ≈ 10.95
+  it("is pure red at diff <= -5", () => {
+    // 2400/7000 = 34.29% used vs 23.33% elapsed → diff ≈ -10.95
     expect(paceColor(q({ used: 2400 }))).toBe(RED)
   })
 
@@ -37,12 +37,15 @@ describe("paceColor", () => {
     const mid = new Date(start + (end - start) * 0.5).toISOString()
     const at = (used: number) => paceColor(q({ used, fetchedAt: mid }))
 
-    // On pace: green. Five points ahead: past half of the green→amber ramp.
-    expect(at(3500)).toBe(GREEN)
-    expect(at(3900)).toMatch(/^rgb\(/)
-    // Ten points ahead: pure red, and it stays red beyond that.
+    // Exactly on pace sits at the amber midline (the cycle's second of slack
+    // keeps it a hair off zero, so it is a ramp value, not the raw constant).
+    expect(at(3500)).toBe("rgb(245, 194, 70)")
+    // 3700/7000 = 52.9% against 50% elapsed: a little ahead, mid-ramp.
+    expect(at(3700)).toMatch(/^rgb\(/)
     expect(at(4200)).toBe(RED)
     expect(at(5000)).toBe(RED)
+    // Ten points behind the clock stays green.
+    expect(at(2800)).toBe(GREEN)
   })
 
   it("ignores the pace in the first 3% of a cycle", () => {

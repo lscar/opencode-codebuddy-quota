@@ -29,29 +29,31 @@ const mix = (from: string, to: string, t: number): Rgb => {
 const toCss = ([r, g, b]: Rgb) => `rgb(${r}, ${g}, ${b})`
 
 /**
- * Color by pace, not by absolute remainder: `diff = usedPct - timePct`.
- * <= 0 is green, 5 is amber, >= 10 is red, linear in between.
+ * Color by pace, not by absolute remainder: `diff` is time progress minus spend
+ * progress. A gap of +5 or more is comfortable, 0 is the amber midline, -5 or
+ * more is an overrun, linear in between.
  */
 export function paceColor(q: Quota): string {
   if (q.diff === null || q.timePct === null) return NEUTRAL
   if (q.timePct < WARMUP_TIME_PCT) return GREEN
   const diff = q.diff
-  if (diff <= 0) return GREEN
-  if (diff >= 10) return RED
-  if (diff <= 5) return toCss(mix(GREEN, AMBER, diff / 5))
-  return toCss(mix(AMBER, RED, (diff - 5) / 5))
+  if (diff >= 5) return GREEN
+  if (diff <= -5) return RED
+  // The gap is negative here, so remap it onto 0..1 for the ramp.
+  return toCss(mix(AMBER, diff < 0 ? RED : GREEN, Math.abs(diff) / 5))
 }
 
-export type PaceLabel = "normal" | "fast" | "over" | "unknown"
+export type PaceLabel = "normal" | "ahead" | "fast" | "over" | "unknown"
 
 export function paceLabel(q: Quota): PaceLabel {
   if (q.diff === null || q.timePct === null) return "unknown"
   // Mirror paceColor's warm-up rule, or the dialog calls "超支" on a capsule that
   // is deliberately green because the cycle just reset.
   if (q.timePct < WARMUP_TIME_PCT) return "normal"
-  if (q.diff > 5) return "over"
-  if (q.diff > 0) return "fast"
-  return "normal"
+  if (q.diff >= 5) return "normal"
+  if (q.diff >= 0) return "ahead"
+  if (q.diff > -5) return "fast"
+  return "over"
 }
 
 export function formatCredits(value: number | null): string {
@@ -75,8 +77,9 @@ export function progressColor(value: number | null): string {
 }
 
 /**
- * The gap between spend and time, in percentage points, with the sign kept.
- * A negative number means spending is behind the clock, which is the good case.
+ * The gap between time and spend, in percentage points, with the sign kept.
+ * Positive means spending lags the clock (the good case); negative means the
+ * credits are going faster than the cycle.
  */
 export function signedPp(value: number | null): string {
   if (value === null || !Number.isFinite(value)) return "—"
@@ -84,8 +87,7 @@ export function signedPp(value: number | null): string {
   return `${value > 0 ? "+" : "-"}${Math.abs(value).toFixed(2)} pp`
 }
 
-/** A negative gap is spending behind the clock, so it is not the warning colour. */
 export function signedPpColor(value: number | null): string {
   if (value === null || !Number.isFinite(value)) return NEUTRAL
-  return value > 0 ? RED : GREEN
+  return value >= 0 ? GREEN : RED
 }

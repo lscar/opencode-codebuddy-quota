@@ -24,13 +24,15 @@ describe("paceLabel agrees with paceColor", () => {
     expect(paceLabel(v)).toBe("normal")
   })
 
-  it("treats exactly diff 5 as fast, matching the amber midpoint", () => {
+  it("treats a gap of exactly 5 points the wrong way as an overrun", () => {
     const start = Date.parse("2026-10-28T00:00:00")
     const end = Date.parse("2026-11-27T23:59:59")
     const mid = new Date(start + (end - start) * 0.5).toISOString()
+    // Half the cycle elapsed, and 55% of the credits spent: diff = -5.
     const v = q({ used: 3850, fetchedAt: mid })
-    expect(v.diff).toBe(5)
-    expect(paceLabel(v)).toBe("fast")
+    expect(v.diff).toBe(-5)
+    expect(paceLabel(v)).toBe("over")
+    expect(paceColor(v)).toBe("#f87171")
   })
 })
 

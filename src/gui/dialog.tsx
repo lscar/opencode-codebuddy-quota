@@ -16,6 +16,7 @@ export interface QuotaDialogProps {
 
 const labelText: Record<PaceLabel, string> = {
   normal: "节奏正常",
+  ahead: "略慢于时间",
   fast: "略快于时间",
   over: "超支",
   unknown: "—",
@@ -179,10 +180,9 @@ export function QuotaDialog(props: QuotaDialogProps): JSX.Element {
             <b>{labelText[paceLabel(q())]}</b>
             {q().diff !== null && (
               <>
-                {"  ·  "}使用进度{" "}
-                <b style={{ color: progressColor(q().usedPct) }}>{formatPct(q().usedPct)}</b> / 时间进度{" "}
-                <b style={{ color: progressColor(q().timePct) }}>{formatPct(q().timePct)}</b>{" "}
-                <b style={{ color: signedPpColor(q().diff) }}>{signedPp(q().diff)}</b>
+                {"  ·  "}使用进度：<b style={{ color: progressColor(q().usedPct) }}>{formatPct(q().usedPct)}</b>
+                {" | "}时间进度：<b style={{ color: progressColor(q().timePct) }}>{formatPct(q().timePct)}</b>
+                {" | "}偏差：<b style={{ color: signedPpColor(q().diff) }}>{signedPp(q().diff)}</b>
               </>
             )}
           </div>

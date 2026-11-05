@@ -20,20 +20,21 @@ const q = (over: Record<string, unknown> = {}) =>
 const localIso = (y: number, m: number, d: number, h = 0, mi = 0, s = 0) =>
   new Date(y, m - 1, d, h, mi, s).toISOString()
 
-describe("time progress uses the reset instant as its end", () => {
-  it("does not report an overrun on the cycle's final second", () => {
-    // 11-27 23:59:59 is the last second of the billing period. Rounded progress
-    // reads 100%, but the reading must not look like an overrun: the allowance has
-    // not been spent just because the clock is nearly up.
-    const lastSecond = q({
-      fetchedAt: localIso(2026, 11, 27, 23, 59, 59),
-      used: 1000,
-      remaining: 6000,
-    })
-    expect(lastSecond.diff).toBeLessThan(0)
-    expect(paceLabel(lastSecond)).toBe("normal")
+describe("the gap distinguishes under-spending from over-spending", () => {
+  it("is positive when the same cycle elapsed has spent fewer credits", () => {
+    const v = q({ used: 1000, fetchedAt: localIso(2026, 11, 27, 23, 0, 0) })
+    // ~100% of the cycle elapsed, ~14% of the credits spent: a big positive gap.
+    expect(v.timePct ?? 0).toBeGreaterThan(v.usedPct ?? 100)
+    expect(v.diff).toBeGreaterThan(50)
   })
 
+  it("is negative when more credits are spent than the cycle has elapsed", () => {
+    const v = q({ used: 6800, fetchedAt: localIso(2026, 11, 2, 0, 0, 0) })
+    expect(v.diff).toBeLessThan(0)
+  })
+})
+
+describe("time progress uses the reset instant as its end", () => {
   it("reaches 100% exactly at the reset instant", () => {
     const atReset = q({ fetchedAt: localIso(2026, 11, 28) })
     expect(atReset.timePct).toBe(100)

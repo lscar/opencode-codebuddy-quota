@@ -123,8 +123,10 @@ export function normalizeQuota(payload: unknown, ctx: NormalizeContext): Quota {
     parseLocalTime(resetAt) ?? parseLocalTime(cycleEnd),
     atMs,
   )
+  // Time progress minus spend progress: positive means the credits are being
+  // used more slowly than the cycle is passing, which is the healthy direction.
   const diff =
-    usedPct !== null && timePct !== null && Number.isFinite(timePct) ? round2(usedPct - timePct) : null
+    usedPct !== null && timePct !== null && Number.isFinite(timePct) ? round2(timePct - usedPct) : null
 
   const status: QuotaStatus =
     data.stale === true ? "stale" : data.cached === true ? "cached" : "ok"
