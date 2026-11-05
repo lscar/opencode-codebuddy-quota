@@ -269,22 +269,6 @@ export function QuotaDialog(props: QuotaDialogProps): JSX.Element {
               </div>
             )}
           </div>
-
-          <div
-            style={{
-              "margin-top": "4px",
-              height: "72px",
-              "border-radius": "8px",
-              border: "1px dashed rgba(128,128,128,.35)",
-              display: "flex",
-              "align-items": "center",
-              "justify-content": "center",
-              "font-size": "11.5px",
-              opacity: "0.55",
-            }}
-          >
-            折线图 · 本期不做
-          </div>
         </>
       )}
     </div>
