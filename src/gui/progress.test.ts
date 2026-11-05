@@ -31,19 +31,19 @@ describe("diff is time progress minus spend progress", () => {
 })
 
 describe("progressColor", () => {
-  it("is green at 50 and above", () => {
+  it("is green at 50 and below", () => {
+    expect(progressColor(0)).toBe(GREEN)
     expect(progressColor(50)).toBe(GREEN)
-    expect(progressColor(100)).toBe(GREEN)
   })
 
-  it("is amber from 20 up to but not including 50", () => {
-    expect(progressColor(20)).toBe(AMBER)
-    expect(progressColor(49.99)).toBe(AMBER)
+  it("is amber above 50 up to and including 80", () => {
+    expect(progressColor(50.01)).toBe(AMBER)
+    expect(progressColor(80)).toBe(AMBER)
   })
 
-  it("is red below 20", () => {
-    expect(progressColor(19.99)).toBe(RED)
-    expect(progressColor(0)).toBe(RED)
+  it("is red above 80", () => {
+    expect(progressColor(80.01)).toBe(RED)
+    expect(progressColor(100)).toBe(RED)
   })
 
   it("is neutral when the value is unknown", () => {

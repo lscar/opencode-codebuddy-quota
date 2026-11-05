@@ -66,13 +66,16 @@ export function formatPct(value: number | null): string {
 
 /**
  * Absolute progress, not pace: how much of the cycle's credits are spent, or how
- * much of its time has elapsed. Both are coloured the same way, so the two bars
+ * much of its time has elapsed. Both are coloured the same way, so the two values
  * in the dialog's status line can be compared at a glance.
+ *
+ * The bands are read as "less is better" for both: spending or elapsing more of
+ * the cycle is the warning direction, so the colour darkens as the number rises.
  */
 export function progressColor(value: number | null): string {
   if (value === null || !Number.isFinite(value)) return NEUTRAL
-  if (value >= 50) return GREEN
-  if (value >= 20) return AMBER
+  if (value <= 50) return GREEN
+  if (value <= 80) return AMBER
   return RED
 }
 
