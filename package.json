@@ -1,5 +1,5 @@
 {
-  "name": "codebuddy-quota",
+  "name": "opencode-codebuddy-quota",
   "version": "0.1.0",
   "description": "OpenCode plugin: CodeBuddy quota for the status bar, and its models in the model picker",
   "private": true,

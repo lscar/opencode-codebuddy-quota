@@ -1,4 +1,4 @@
-# codebuddy-quota
+# opencode-codebuddy-quota
 
 OpenCode Desktop 的 CodeBuddy 订阅额度插件，顺带把 CodeBuddy 的模型接进模型选择器。
 
@@ -33,7 +33,7 @@ bun run build:gui      # 产出 dist/gui-experimental.cjs，缺了它窗口侧�
 
 ```jsonc
 {
-  "plugins": ["D:\\code\\codebuddy-quota"]
+  "plugins": ["D:\\code\\opencode-codebuddy-quota"]
 }
 ```
 
