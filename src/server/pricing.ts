@@ -63,9 +63,9 @@ export function mappingEntry(
  * Exact id first, then a case-insensitive pass — the server writes
  * `minimax-m3.1-flash` while models.dev writes `MiniMax-M3.1-Flash`.
  *
- * Deliberately never prefix- or substring-matches: the catalog is full of
- * `-free` siblings (`step-5-preview-free`, `hy3-free`, …) that price at zero,
- * and a fuzzy match would silently report those instead of the paid model.
+ * Nothing fuzzier than that: the catalog is full of `-free` siblings
+ * (`step-5-preview-free`, `hy3-free`, …) that price at zero, so a prefix or
+ * substring match would quietly report those instead of the paid model.
  */
 export function findEntry(
   catalog: ModelsDevCatalog,
@@ -143,7 +143,7 @@ export function resolveCost(
 export function vendorEfforts(
   mapping: ModelMapping | undefined,
   catalog: ModelsDevCatalog | null,
-): { efforts: string[]; toggle: boolean; defaultEffort: string | null } | null {
+): { efforts: string[]; defaultEffort: string | null } | null {
   const reasoning = mappingEntry(catalog, mapping)?.capabilities?.reasoning
   const efforts = reasoning?.effort
   if (!efforts || efforts.length === 0) return null
@@ -151,7 +151,6 @@ export function vendorEfforts(
   const declared = typeof reasoning.default === "string" ? reasoning.default : reasoning.default?.value ?? null
   return {
     efforts: [...efforts],
-    toggle: reasoning.toggle === true,
     // Only honour a vendor default that is actually one of its levels.
     defaultEffort: declared && efforts.includes(declared) ? declared : null,
   }

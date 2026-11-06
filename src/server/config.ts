@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs"
 import { homedir } from "node:os"
 import { join } from "node:path"
+import { DEFAULT_PACKAGE_VERSION, isVersion } from "./package-spec"
 
 /** Where a CodeBuddy model lives in the models.dev catalog. */
 export interface ModelMapping {
@@ -48,14 +49,19 @@ export const DEFAULT_CONFIG: QuotaConfig = {
     "space-bunny": { provider: "minimax-cn", model: "MiniMax-M3.1-Flash" },
   },
   excluded_models: ["space-bunny", "hy3", "hy3-x"],
-  package_version: "2.0.90",
+  package_version: DEFAULT_PACKAGE_VERSION,
 }
 
 export const CONFIG_FILE_NAME = "codebuddy-quota.json"
 
+/** `~/.config/opencode`, where both this config and `opencode.jsonc` live. */
+export function configDir(home: string = homedir()): string {
+  return join(home, ".config", "opencode")
+}
+
 /** `~/.config/opencode/codebuddy-quota.json`, beside the user's `opencode.jsonc`. */
 export function configPath(home: string = homedir()): string {
-  return join(home, ".config", "opencode", CONFIG_FILE_NAME)
+  return join(configDir(home), CONFIG_FILE_NAME)
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -116,10 +122,9 @@ export function loadConfig(deps: LoadConfigDeps = {}): QuotaConfig {
 
   const models = modelMap(parsed.models)
   const excluded = stringList(parsed.excluded_models)
-  const packageVersion =
-    typeof parsed.package_version === "string" && parsed.package_version.trim().length > 0
-      ? parsed.package_version.trim()
-      : undefined
+  // Only a real version may reach the config writer: anything else would be
+  // written verbatim into the provider's `package` spec.
+  const packageVersion = isVersion(parsed.package_version) ? parsed.package_version : undefined
 
   return {
     models: models ? { ...DEFAULT_CONFIG.models, ...models } : DEFAULT_CONFIG.models,

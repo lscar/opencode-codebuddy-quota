@@ -28,8 +28,6 @@ export interface CatalogModel {
   name: string
   /** Credit multiplier from `"x0.29 credits"` as `0.29`; null when the server did not declare one. */
   credits: number | null
-  context: number | null
-  output: number | null
   imageInput: boolean
   /** Reasoning effort ids, ordered from least to most. Empty when the model does not reason. */
   efforts: readonly string[]
@@ -76,11 +74,9 @@ export function shortCredits(raw: unknown): number | null {
   return Number.isFinite(value) ? value : null
 }
 
-function positiveInt(...values: readonly unknown[]): number | null {
-  for (const value of values) {
-    if (typeof value === "number" && Number.isSafeInteger(value) && value > 0) return value
-  }
-  return null
+/** True when any of the values is a positive integer, i.e. the model declares some capacity. */
+function declaresCapacity(...values: readonly unknown[]): boolean {
+  return values.some((value) => typeof value === "number" && Number.isSafeInteger(value) && value > 0)
 }
 
 function text(...values: readonly unknown[]): string | null {
@@ -105,7 +101,9 @@ function readEfforts(reasoning: Record<string, unknown> | null): { efforts: stri
 
   if (supported.length > 0) {
     const efforts = sortEfforts(supported)
-    if (reasoning.canDisableThinking !== false) efforts.unshift("off")
+    // Some servers list `off` among the supported efforts and also flag it via
+    // `canDisableThinking`; the guard keeps it from shipping as two variants.
+    if (reasoning.canDisableThinking !== false && !efforts.includes("off")) efforts.unshift("off")
     return { efforts, defaultEffort: text(reasoning.defaultEffort) }
   }
 
@@ -147,10 +145,9 @@ export function parseModelConfig(body: unknown): readonly CatalogModel[] {
     const model = byId.get(raw)
     if (!model) continue
 
-    const context = positiveInt(model.maxInputTokens, model.maxAllowedSize)
-    const output = positiveInt(model.maxOutputTokens)
-    // A model with no declared capacity loses every limit the plugin needs, so it is dropped.
-    if (context === null && output === null) continue
+    // A model that declares no capacity at all is not a usable model; the
+    // figures themselves are not imported (see model-info's fixed limit).
+    if (!declaresCapacity(model.maxInputTokens, model.maxAllowedSize, model.maxOutputTokens)) continue
 
     const reasoning =
       model.supportsReasoning === true && model.reasoning !== null && typeof model.reasoning === "object"
@@ -162,8 +159,6 @@ export function parseModelConfig(body: unknown): readonly CatalogModel[] {
       id: raw,
       name: text(model.name) ?? raw,
       credits: shortCredits(model.credits),
-      context,
-      output,
       imageInput: model.supportsImages === true,
       efforts,
       defaultEffort,

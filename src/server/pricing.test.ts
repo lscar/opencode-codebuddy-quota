@@ -131,7 +131,6 @@ describe("vendorEfforts", () => {
   it("returns the vendor's levels and its own default", () => {
     expect(vendorEfforts(mapping("deepseek", "deepseek-v4-pro"), withReasoning)).toEqual({
       efforts: ["low", "high", "max"],
-      toggle: true,
       defaultEffort: "max",
     })
   })

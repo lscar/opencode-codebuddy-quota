@@ -1,9 +1,10 @@
 import { describe, expect, it } from "bun:test"
+import type { CatalogModel } from "./catalog"
 import { DEFAULT_CONFIG } from "./config"
 import { buildModels } from "./model-info"
 
-const model = (id: string, name: string, credits: number | null) => ({
-  id, name, credits, context: 1000000, output: 131072, imageInput: true, efforts: ["high"], defaultEffort: "high",
+const model = (id: string, name: string, credits: number | null): CatalogModel => ({
+  id, name, credits, imageInput: true, efforts: ["high"], defaultEffort: "high",
 })
 
 const catalog = [
@@ -108,16 +109,19 @@ describe("buildModels", () => {
   })
 
   it("falls back to the heaviest vendor level when the gateway default is not among them", () => {
+    // Deliberately not sorted: `high` is the heaviest level but not the last one,
+    // so this distinguishes "heaviest" from "last in the table".
     const dev = {
       stepfun: {
         models: {
-          "step-5-preview": { capabilities: { reasoning: { effort: ["low", "medium", "high"] } } },
+          "step-5-preview": { capabilities: { reasoning: { effort: ["high", "low", "medium"] } } },
         },
       },
     } as any
     const server = { ...model("step-5-preview", "Step-5-Preview", 0.33), efforts: ["low", "medium", "high"], defaultEffort: "max" }
     const built = buildModels({ catalog: [server], config: DEFAULT_CONFIG, modelsDev: dev, log: () => {} })
-    expect(built[0].defaultEffort).toBe("high")
+    // Last in the vendor table, but not the heaviest: only a real rank lookup finds it.
+    expect(built[0].defaultEffort).toBe("medium")
   })
 
   it("keeps the server's levels for a model models.dev has no reasoning data for", () => {

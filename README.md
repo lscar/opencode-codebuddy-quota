@@ -45,6 +45,8 @@ Key 不会进入窗口进程，也不会出现在 RPC 响应里。
 - **只有内容真的变了才写文件**：模型增删、价格变化、思考档位变化都会触发重写；一模一样就跳过。
 - 写入前会把原文件备份成 `opencode.jsonc.codebuddy-quota.bak`（只备份一次，保留改动前的原始版本）。
 - 拉取失败、或配置解析不了时，一个字节都不写，只在控制台说明原因。
+- 写盘前会自检：注释按**等长**抹白处理（偏移不会错位），渲染出的文本必须能解析、且 `package` 必须落在预期位置，否则整次写入作废并说明原因。
+- 版本号必须是合法的 semver（如 `2.0.90`）；不是的话只更新 `models`，不动 `package`。
 - 没有 `OPENCODE_CODEBUDDY_API_KEY` 时完全跳过，不会凭空建一个发不出请求的 provider。
 - 每次启动会查一次 npm 上 `@ai-sdk/openai-compatible` 的 `ai-v6` 标签，有新版本就把 `package` 里的版本号升上去。
 
@@ -67,7 +69,7 @@ Key 不会进入窗口进程，也不会出现在 RPC 响应里。
     "deepseek-v4.1-flash": { "provider": "deepseek", "model": "deepseek-v4-flash" },
     "glm-5.3-flash": { "provider": "zhipuai", "model": "glm-5.3-flash" },
     "hy4std": { "provider": "tencent-tokenhub", "model": "hy4" },
-    "space-bunny": { "provider": "opencode-go", "model": "space-bunny" }
+    "space-bunny": { "provider": "minimax-cn", "model": "MiniMax-M3.1-Flash" }
   },
   "excluded_models": ["space-bunny", "hy3", "hy3-x"],
   "package_version": "2.0.90"
@@ -78,7 +80,7 @@ Key 不会进入窗口进程，也不会出现在 RPC 响应里。
 | --- | --- |
 | `models` | CodeBuddy 的模型 id → models.dev 里的 `{ provider, model }`。**不写就不展示**；写了的会与内置默认表合并，可以覆盖默认项，也可以加新模型 |
 | `excluded_models` | 额外的强制排除。即使 `models` 里写了，这里的 id 也不会出现。整体替换默认值 |
-| `package_version` | `@ai-sdk/openai-compatible` 的兜底版本，只在查 npm 失败（离线、限流）时使用；平时以 npm `ai-v6` 标签为准。默认值是插件发布时验证过的版本 |
+| `package_version` | `@ai-sdk/openai-compatible` 的兜底版本，只在查 npm 失败（离线、限流）时使用；平时以 npm `ai-v6` 标签为准。必须是合法 semver，非法值会被忽略。默认值是插件发布时验证过的版本 |
 
 服务端来了一个新模型、而 `models` 里没有它时，插件不猜 provider、不猜价格，直接跳过并在控制台报一次原因。
 查价只在映射指定的 provider 下做精确匹配（外加大小写不敏感），不会前缀或包含匹配——
@@ -88,7 +90,7 @@ models.dev 里有一堆 `-free` 零价条目，模糊匹配会把它们当成付
 
 ```bash
 bun install
-bun test          # 210 个用例
+bun test          # 227 个用例
 bun run build     # 产出 dist/gui-experimental.cjs
 ```
 
@@ -113,7 +115,8 @@ opencode api post "/api/rpc/codebuddy-quota/read" -d '{"input":{}}'
 | `src/server/models-dev.ts` | 从 `opencode.db` 的 `kv` 表读 models.dev 缓存 |
 | `src/server/model-info.ts` | 过滤、定价、同名去重，组装待写入的模型 |
 | `src/server/config-writer.ts` | 把模型清单合并进 `opencode.jsonc`，保留其余内容 |
-| `src/server/package-version.ts` | 查 npm 的 `ai-v6` 标签，改写 provider 的 package 版本 |
+| `src/server/package-spec.ts` | provider 的 `package` 规格与版本校验 |
+| `src/server/package-version.ts` | 查 npm 的 `ai-v6` 标签，决定要写入的版本 |
 | `src/gui/store.ts` | GUI 侧 RPC 客户端与刷新节流 |
 | `src/gui/quota.ts` | 状态归类、百分比与节奏推导 |
 | `src/gui/battery.tsx` / `dialog.tsx` | 胶囊与浮层 |

@@ -3,7 +3,7 @@ import { join } from "node:path"
 import { Plugin } from "@opencode/plugin"
 import { CodebuddyQuota } from "./rpc"
 import { fetchCatalog } from "./src/server/catalog"
-import { configPath, loadConfig } from "./src/server/config"
+import { configDir, loadConfig } from "./src/server/config"
 import { writeModels } from "./src/server/config-writer"
 import { createDedupedLogger } from "./src/server/logger"
 import { buildModels } from "./src/server/model-info"
@@ -17,7 +17,7 @@ const UPSTREAM_TIMEOUT_MS = 15_000
 
 /** `~/.config/opencode/opencode.jsonc`, beside `codebuddy-quota.json`. */
 function opencodeConfigPath(): string {
-  return join(configPath().replace(/[/\\]codebuddy-quota\.json$/, ""), "opencode.jsonc")
+  return join(configDir(), "opencode.jsonc")
 }
 
 /** AbortSignal.any is not guaranteed in every runtime OpenCode embeds. */
@@ -69,11 +69,12 @@ export default Plugin.define({
      *
      * Nothing here is allowed to take the quota panel down with it.
      */
-    if (readApiKey().trim()) {
+    const key = readApiKey()
+    if (key.trim()) {
       try {
         const config = loadConfig()
         const models = buildModels({
-          catalog: await fetchCatalog({ key: readApiKey() }),
+          catalog: await fetchCatalog({ key }),
           config,
           modelsDev: readModelsDevCatalog(),
           log,
@@ -102,13 +103,14 @@ export default Plugin.define({
               if (!existsSync(backupPath)) writeFileSync(backupPath, content, "utf8")
             },
           })
-          if (!result.written) {
+          if (result.status === "skipped") {
             log(`left ${target} untouched: ${result.reason}`)
-          } else if (result.changed) {
+          } else if (result.status === "written") {
             const source = latest ? "npm" : "configured fallback"
-            log(
-              `wrote ${models.length} models, package ${packageVersion} (${source}) into ${target}; restart to pick them up`,
-            )
+            const pkg = result.packageUpdated
+              ? `package ${packageVersion} (${source})`
+              : `package left as it was${result.packageWarning ? ` (${result.packageWarning})` : ""}`
+            log(`wrote ${models.length} models, ${pkg} into ${target}; restart to pick them up`)
           }
         }
       } catch (error) {

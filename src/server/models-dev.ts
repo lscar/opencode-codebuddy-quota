@@ -32,13 +32,6 @@ export function storageDir(
   return join(home, ".local", "share", "opencode")
 }
 
-export function databasePath(
-  env: Record<string, string | undefined> = process.env,
-  home: string = homedir(),
-): string {
-  return join(storageDir(env, home), DB_FILE)
-}
-
 /** `{ updatedAt, digest, body: "<json>" }` → the catalog. Null if either layer is unparseable. */
 export function parseCatalogValue(value: string): ModelsDevCatalog | null {
   try {
@@ -72,7 +65,7 @@ function readValueFromDatabase(dbPath: string): string | null {
 
 /** The whole models.dev catalog, or null when it cannot be read. Never throws. */
 export function readModelsDevCatalog(deps: ReadCatalogDeps = {}): ModelsDevCatalog | null {
-  const dbPath = deps.dbPath ?? databasePath()
+  const dbPath = deps.dbPath ?? join(storageDir(), DB_FILE)
   const read = deps.readValue ?? readValueFromDatabase
   try {
     const value = read(dbPath)

@@ -2,7 +2,7 @@ import { describe, expect, it } from "bun:test"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { DEFAULT_CONFIG, loadConfig } from "./config"
-import { DEFAULT_PACKAGE_VERSION } from "./provider-default"
+import { DEFAULT_PACKAGE_VERSION } from "./package-spec"
 
 describe("loadConfig", () => {
   it("returns defaults when the file is missing", () => {
@@ -62,8 +62,9 @@ describe("loadConfig", () => {
     expect(c.package_version).toBe("2.1.7")
   })
 
-  it("ignores a blank or non-string package_version", () => {
-    for (const bad of ["", "   ", 42, null]) {
+  it("ignores anything that is not a plain version", () => {
+    const file = '{\n  "providers": {}\n}'
+    for (const bad of ["", "   ", 42, null, "2.0", "v2.1.7", "@ai-sdk/openai-compatible", file]) {
       const c = loadConfig({ readFile: () => JSON.stringify({ package_version: bad }) })
       expect(c.package_version).toBe(DEFAULT_CONFIG.package_version)
     }

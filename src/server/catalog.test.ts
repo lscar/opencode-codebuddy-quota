@@ -31,14 +31,74 @@ describe("parseModelConfig", () => {
     expect(models.map((m) => m.id)).toEqual(["hy4std", "glm-5.3-flash"])
   })
 
-  it("reads credits, limits and efforts", () => {
+  it("reads credits, image support and efforts", () => {
     const [hy4] = parseModelConfig(body())
     expect(hy4.credits).toBe(0.29)
-    expect(hy4.context).toBe(960000)
-    expect(hy4.output).toBe(64000)
     expect(hy4.imageInput).toBe(true)
     expect(hy4.efforts).toEqual(["high"])
     expect(hy4.defaultEffort).toBe("high")
+  })
+
+  it("prepends off for a selectable model and does not duplicate it", () => {
+    const withOff = body({
+      data: {
+        agents: [{ name: "cli", models: ["toggle"] }],
+        models: [
+          {
+            id: "toggle",
+            name: "Toggle",
+            maxInputTokens: 1,
+            supportsReasoning: true,
+            reasoning: { supportedEfforts: ["low", "high", "off"], canDisableThinking: true, defaultEffort: "high" },
+          },
+        ],
+      },
+    })
+    // `off` comes from canDisableThinking and must not be added a second time.
+    // `sortEfforts` ranks it first, so the order is still least to most.
+    expect(parseModelConfig(withOff)[0].efforts).toEqual(["off", "low", "high"])
+  })
+
+  it("keeps a single locked level as both the only level and the default", () => {
+    const locked = body({
+      data: {
+        agents: [{ name: "cli", models: ["locked"] }],
+        models: [
+          {
+            id: "locked",
+            name: "Locked",
+            maxInputTokens: 1,
+            supportsReasoning: true,
+            reasoning: { effort: "high", canDisableThinking: false },
+          },
+        ],
+      },
+    })
+    expect(parseModelConfig(locked)[0].efforts).toEqual(["high"])
+    expect(parseModelConfig(locked)[0].defaultEffort).toBe("high")
+  })
+
+  it("drops a model that declares no capacity at all", () => {
+    const noCapacity = body({
+      data: {
+        agents: [{ name: "cli", models: ["empty-capacity", "hy4std"] }],
+        models: [
+          { id: "empty-capacity", name: "Empty", credits: "x0.10 credits" },
+          { id: "hy4std", name: "Hy4", credits: "x0.29 credits", maxInputTokens: 960000 },
+        ],
+      },
+    })
+    expect(parseModelConfig(noCapacity).map((m) => m.id)).toEqual(["hy4std"])
+  })
+
+  it("keeps a model that declares only an output window", () => {
+    const outputOnly = body({
+      data: {
+        agents: [{ name: "cli", models: ["out-only"] }],
+        models: [{ id: "out-only", name: "Out", maxOutputTokens: 64000 }],
+      },
+    })
+    expect(parseModelConfig(outputOnly).map((m) => m.id)).toEqual(["out-only"])
   })
 
   it("returns an empty list when data.models is absent", () => {

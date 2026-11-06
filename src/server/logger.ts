@@ -1,10 +1,10 @@
 /**
  * A warning sink that reports each distinct message once per process.
  *
- * A provider transform runs on every model-list rebuild, so the same
- * "provider X has no entry for Y" would otherwise repeat on each one and bury
- * anything that actually changed. Logging must also never be the thing that
- * breaks a caller: a throwing writer is swallowed.
+ * Import runs at plugin load and can emit the same "provider X has no entry for
+ * Y" for several models at once; deduping keeps the console readable. Logging
+ * must also never be the thing that breaks a caller: a throwing writer is
+ * swallowed.
  */
 export function createDedupedLogger(
   write: (line: string) => void,
