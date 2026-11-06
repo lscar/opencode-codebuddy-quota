@@ -28,7 +28,7 @@ export default Plugin.define({
           return (
             <QuotaDialog
               quota={live()}
-              ui={{ Dialog: ctx.ui.Dialog, Button: ctx.ui.Button }}
+              ui={ctx.ui}
               onRefresh={() => store.refresh({ force: true })}
               close={dialog.close}
             />

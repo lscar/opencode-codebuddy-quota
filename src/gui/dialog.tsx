@@ -1,5 +1,6 @@
 import type { JSX } from "solid-js"
 import { createSignal, onMount } from "solid-js"
+import type { Ui } from "@opencode/plugin/gui"
 import { daysLeftInCycle } from "./days"
 import { formatCredits, formatPct, paceColor, paceLabel, type PaceLabel } from "./pace"
 import { PACE_CHIPS, paceChips } from "./pace-row"
@@ -9,10 +10,8 @@ export interface QuotaDialogProps {
   quota: Quota
   onRefresh: () => Promise<void>
   close: () => void
-  ui: {
-    Dialog: (props: Record<string, unknown>) => JSX.Element
-    Button: (props: Record<string, unknown>) => JSX.Element
-  }
+  /** Only the two host components the dialog draws with. */
+  ui: Pick<Ui, "Dialog" | "Button">
 }
 
 const labelText: Record<PaceLabel, string> = {

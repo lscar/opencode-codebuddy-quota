@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test"
 import { daysLeftInCycle, parseCycleDay } from "./days"
 
-const at = (y: number, m: number, d: number, h = 12) => new Date(y, m - 1, d, h, 0, 0)
+const at = (y: number, m: number, d: number, h = 12) => new Date(y, m - 1, d, h, 0, 0).getTime()
 
 describe("parseCycleDay", () => {
   it("reads the date part of an upstream timestamp as local midnight", () => {

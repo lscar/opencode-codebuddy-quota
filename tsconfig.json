@@ -10,5 +10,5 @@
     "skipLibCheck": true,
     "types": ["bun"]
   },
-  "include": ["src"]
+  "include": ["src", "server.ts", "rpc.ts", "vite.config.ts"]
 }

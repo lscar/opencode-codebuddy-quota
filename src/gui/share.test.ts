@@ -23,8 +23,10 @@ describe("remainingShare", () => {
 
   it("rounds the capsule to a whole number from the same value", () => {
     const v = q()
-    expect(remainingPercent(v)).toBe(88)
-    expect(Math.round(remainingShare(v) ?? 0)).toBe(remainingPercent(v))
+    const percent = remainingPercent(v)
+    expect(percent).toBe(88)
+    // Both read the same figures, so the capsule never contradicts the headline.
+    expect(Math.round(remainingShare(v) as number)).toBe(percent as number)
   })
 
   it("does not go negative on an overrun", () => {

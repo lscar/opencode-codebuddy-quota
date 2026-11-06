@@ -1,15 +1,32 @@
 {
   "name": "codebuddy-quota",
+  "version": "0.1.0",
+  "description": "OpenCode plugin: CodeBuddy quota for the status bar, and its models in the model picker",
   "private": true,
   "type": "module",
+  "license": "MIT",
+  "engines": {
+    "bun": ">=1.4.0"
+  },
+  "files": [
+    "server.ts",
+    "rpc.ts",
+    "src",
+    "config.default.json",
+    "dist"
+  ],
   "exports": {
     ".": "./server.ts",
     "./rpc": "./rpc.ts",
     "./gui-experimental": "./dist/gui-experimental.cjs"
   },
   "scripts": {
-    "build": "vite build",
-    "test": "bun test"
+    "typecheck": "bunx tsc --noEmit",
+    "test": "bun test",
+    "check": "bun run typecheck && bun test",
+    "build": "bun run build:gui",
+    "build:gui": "vite build",
+    "build:server": "bun -e \"console.log('server runs straight from TypeScript; bun install is all it needs')\""
   },
   "devDependencies": {
     "@opencode/plugin": "2.2.5",

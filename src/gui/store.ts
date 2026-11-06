@@ -30,6 +30,7 @@ const idle = (status: "error", error: string | null): Quota => ({
   cycleEnd: null,
   resetAt: null,
   fetchedAt: null,
+  ageSeconds: null,
   error,
 })
 
