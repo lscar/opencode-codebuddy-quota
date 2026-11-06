@@ -1,0 +1,20 @@
+{
+  "model_aliases": {
+    "hy4std": "hy4",
+    "hy4free": "hy4"
+  },
+  "cost_providers": {
+    "deepseek-v4.1-flash": "opencode",
+    "deepseek-v4-pro": "opencode",
+    "glm-5.3-flash": "zhipuai",
+    "glm-5.3-flashx": "zhipuai",
+    "minimax-m3.1-flash": "minimax-cn",
+    "step-5-preview": "stepfun",
+    "mimo-v2.6-pro": "xiaomi",
+    "hy4std": "tencent-tokenhub",
+    "hy4free": "tencent-tokenhub"
+  },
+  "default_cost_provider": "opencode",
+  "excluded_models": ["space-bunny", "hy3", "hy3-x"],
+  "auto_prefix": true
+}
