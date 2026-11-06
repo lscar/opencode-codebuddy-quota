@@ -22,28 +22,38 @@ Desktop 窗口
 
 ## 安装
 
-前置：本机有 `bun`。克隆后先装依赖并构建 GUI（`dist/` 不进版本库）：
-
-```bash
-bun install
-bun run build:gui      # 产出 dist/gui-experimental.cjs，缺了它窗口侧的胶囊不会出现
-```
-
-然后在 `~/.config/opencode/opencode.jsonc` 的 `plugins` 里加这个目录的绝对路径：
+前置：本机有 `bun` 和 `git`。在 `~/.config/opencode/opencode.jsonc` 的 `plugins` 里按 tag 引用：
 
 ```jsonc
 {
-  "plugins": ["D:\\code\\opencode-codebuddy-quota"]
+  "plugins": [
+    "git+https://github.com/lscar/opencode-codebuddy-quota.git#v0.1.0"
+  ]
 }
 ```
 
-并设置 API Key：
+设置 API Key，然后重启服务：
 
 ```powershell
 $env:OPENCODE_CODEBUDDY_API_KEY = "..."
 ```
 
-新增本地插件后需要 `opencode service restart`。之后改 `src/gui/**` 用 `bun run build:gui`（窗口热重载），
+```bash
+opencode service restart
+```
+
+**关于 GUI**：git 安装只拉源码，`dist/` 不在版本库里，所以窗口侧的胶囊需要单独构建一次。
+克隆到本地后 `bun install && bun run build:gui`，或者从
+[Releases](https://github.com/lscar/opencode-codebuddy-quota/releases) 下载
+`gui-experimental.cjs` 放到 `dist/` 下。只做 server 侧的额度取数不需要这一步。
+
+本地开发时也可以直接引用目录的绝对路径：
+
+```jsonc
+{ "plugins": ["D:\\code\\opencode-codebuddy-quota"] }
+```
+
+之后改 `src/gui/**` 用 `bun run build:gui`（窗口热重载），
 改 `server.ts` / `src/server/**` 再重启一次服务——server 侧直接跑 TypeScript，没有构建步骤。
 
 ## 凭据
