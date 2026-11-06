@@ -15,9 +15,14 @@ const entry = (input: number, output: number, cacheRead?: number) => ({
 
 // 注意：每个 provider 下必须带一层 models，对应真实结构 { [provider]: { models: { [id]: entry } } }
 const catalog = cat({
-  opencode: { models: { "deepseek-v4.1-flash": entry(0.3, 1.2, 0.006) } },
+  deepseek: {
+    models: {
+      "deepseek-v4-flash": entry(0.15, 0.6, 0.003),
+      "deepseek-v4-pro": entry(0.66, 1.98, 0.022),
+    },
+  },
   zhipuai: { models: { "glm-5.3-flash": entry(0.11952, 0.41831, 0.03436) } },
-  "minimax-cn": { models: { "MiniMax-M3.1-Flash": entry(0.1494, 0.5976) } },
+  minimax: { models: { "MiniMax-M3.1-Flash": entry(0.15, 0.6) } },
   "tencent-tokenhub": { models: { hy4: entry(0.834, 2.501, 0.042) } },
   "opencode-go": {
     models: {
@@ -56,7 +61,7 @@ describe("explicit cost_providers", () => {
   it("matches model ids case-insensitively", () => {
     const [c] = resolveCost(m("minimax-m3.1-flash"), DEFAULT_CONFIG, catalog, quiet)
     expect(c).toBeDefined()
-    expect(c.input).toBeCloseTo(0.1494, 5)
+    expect(c.input).toBeCloseTo(0.15, 5)
   })
 
   it("applies model_aliases before lookup", () => {
@@ -118,14 +123,14 @@ describe("lookup failures", () => {
   it("defaults missing cache.write to zero", () => {
     const [c] = resolveCost(m("deepseek-v4.1-flash"), DEFAULT_CONFIG, catalog, quiet)
     expect(c.cache.write).toBe(0)
-    expect(c.cache.read).toBeCloseTo(0.006, 6)
+    expect(c.cache.read).toBeCloseTo(0.003, 6)
   })
 })
 
 describe("findEntry", () => {
   it("prefers an exact id and falls back to case-insensitive", () => {
-    expect(findEntry(catalog, "minimax-cn", "MiniMax-M3.1-Flash")).toBeDefined()
-    expect(findEntry(catalog, "minimax-cn", "minimax-m3.1-flash")).toBeDefined()
-    expect(findEntry(catalog, "minimax-cn", "minimax-m3.1-flash-free")).toBeUndefined()
+    expect(findEntry(catalog, "minimax", "MiniMax-M3.1-Flash")).toBeDefined()
+    expect(findEntry(catalog, "minimax", "minimax-m3.1-flash")).toBeDefined()
+    expect(findEntry(catalog, "minimax", "minimax-m3.1-flash-free")).toBeUndefined()
   })
 })

@@ -16,6 +16,16 @@ export interface ModelsDevCost {
 export interface ModelsDevEntry {
   name?: string
   cost?: ModelsDevCost
+  capabilities?: {
+    reasoning?: {
+      supported?: boolean
+      toggle?: boolean
+      /** Selectable reasoning levels, least to most. */
+      effort?: readonly string[]
+      /** The level the vendor picks when the caller names none. */
+      default?: { type?: string; value?: string } | string
+    }
+  }
 }
 
 /** `{ [providerID]: { models: { [modelID]: entry } } }`, as stored under `models-dev:v2:catalog`. */
@@ -106,10 +116,79 @@ function toCost(entry: ModelsDevEntry): ModelCost | null {
 }
 
 /**
- * Resolve a model's price, returning `[]` when no price can be trusted — an
+ * Resolve a model's entry, returning `[]` when no price can be trusted — an
  * unpriced model is better than a wrong one. Every miss is reported through
  * `log` so a stale `cost_providers` entry is visible rather than silent.
  */
+function findPricedEntry(
+  model: PricedModel,
+  config: QuotaConfig,
+  catalog: ModelsDevCatalog | null,
+  log: (message: string) => void,
+): ModelsDevEntry | null {
+  if (!catalog) {
+    log(`models.dev catalog unavailable; ${model.id} stays unpriced`)
+    return null
+  }
+
+  const modelID = config.model_aliases[model.id] ?? model.id
+  const primary = providerFor(model.id, config)
+
+  const direct = findEntry(catalog, primary, modelID)
+  if (direct) {
+    if (toCost(direct)) return direct
+    log(`${primary}/${modelID} has no text pricing`)
+  } else {
+    log(`${primary} has no entry for ${modelID}`)
+  }
+
+  const fallback = config.default_cost_provider
+  if (fallback !== primary) {
+    const entry = findEntry(catalog, fallback, modelID)
+    if (entry) {
+      if (toCost(entry)) return entry
+      log(`${fallback}/${modelID} has no text pricing`)
+    } else {
+      log(`${fallback} has no entry for ${modelID} either`)
+    }
+  }
+
+  log(`no price for ${model.id}; leaving it unpriced`)
+  return null
+}
+
+/**
+ * The vendor's own reasoning levels for a model, or null when models.dev has
+ * none. CodeBuddy's gateway rewrites some of these (it swaps `max` for `xhigh`
+ * on `deepseek-v4-pro`, for instance), but the vendor table is what was asked
+ * for, and a level the gateway rejects is a visible failure rather than a
+ * silent one.
+ */
+export function vendorEfforts(
+  model: PricedModel,
+  config: QuotaConfig,
+  catalog: ModelsDevCatalog | null,
+): { efforts: string[]; toggle: boolean; defaultEffort: string | null } | null {
+  if (!catalog) return null
+
+  const modelID = config.model_aliases[model.id] ?? model.id
+  const providers = [providerFor(model.id, config), config.default_cost_provider]
+  for (const provider of providers) {
+    const reasoning = findEntry(catalog, provider, modelID)?.capabilities?.reasoning
+    if (reasoning?.effort && reasoning.effort.length > 0) {
+      const declared =
+        typeof reasoning.default === "string" ? reasoning.default : reasoning.default?.value ?? null
+      return {
+        efforts: [...reasoning.effort],
+        toggle: reasoning.toggle === true,
+        // Only honour a vendor default that is actually one of its levels.
+        defaultEffort: declared && reasoning.effort.includes(declared) ? declared : null,
+      }
+    }
+  }
+  return null
+}
+
 export function resolveCost(
   model: PricedModel,
   config: QuotaConfig,
@@ -120,35 +199,8 @@ export function resolveCost(
   // would contradict the credit factor the server reported.
   if (model.credits === 0) return [ZERO_COST]
 
-  if (!catalog) {
-    log(`models.dev catalog unavailable; ${model.id} stays unpriced`)
-    return []
-  }
-
-  const modelID = config.model_aliases[model.id] ?? model.id
-  const primary = providerFor(model.id, config)
-
-  const direct = findEntry(catalog, primary, modelID)
-  if (direct) {
-    const cost = toCost(direct)
-    if (cost) return [cost]
-    log(`${primary}/${modelID} has no text pricing`)
-  } else {
-    log(`${primary} has no entry for ${modelID}`)
-  }
-
-  const fallback = config.default_cost_provider
-  if (fallback !== primary) {
-    const entry = findEntry(catalog, fallback, modelID)
-    if (entry) {
-      const cost = toCost(entry)
-      if (cost) return [cost]
-      log(`${fallback}/${modelID} has no text pricing`)
-    } else {
-      log(`${fallback} has no entry for ${modelID} either`)
-    }
-  }
-
-  log(`no price for ${model.id}; leaving it unpriced`)
-  return []
+  const entry = findPricedEntry(model, config, catalog, log)
+  if (!entry) return []
+  const cost = toCost(entry)
+  return cost ? [cost] : []
 }

@@ -1,6 +1,6 @@
 import type { CatalogModel } from "./catalog"
 import type { QuotaConfig } from "./config"
-import { resolveCost, type ModelCost, type ModelsDevCatalog } from "./pricing"
+import { resolveCost, vendorEfforts, type ModelCost, type ModelsDevCatalog } from "./pricing"
 
 /**
  * Turns the CodeBuddy catalog into the shape a provider needs: models filtered
@@ -25,9 +25,12 @@ export interface BuildModelsDeps {
   log: (message: string) => void
 }
 
-/** Fallbacks for a model that declares only one of its two capacity figures. */
-const FALLBACK_CONTEXT = 262_144
-const FALLBACK_OUTPUT = 32_768
+/**
+ * One size for every model, regardless of what either the server or models.dev
+ * declares. CodeBuddy bills the same credits per token whatever the model's
+ * nominal window, so per-model limits only made the picker lie about capacity.
+ */
+const LIMIT = { context: 500_000, output: 64_000 } as const
 
 /**
  * The catalog declares `Hy4` twice (free and standard) and `Hy3` twice. Only
@@ -54,19 +57,34 @@ export function buildModels(deps: BuildModelsDeps): readonly ImportedModel[] {
 
   const kept = deps.catalog.filter((model) => !excluded.has(model.id))
 
-  const built = kept.map<ImportedModel>((model) => ({
-    id: model.id,
-    name: model.name,
-    cost: resolveCost(model, config, modelsDev, log),
-    limit: {
-      context: model.context ?? FALLBACK_CONTEXT,
-      output: model.output ?? FALLBACK_OUTPUT,
-    },
-    imageInput: model.imageInput,
-    efforts: model.efforts,
-    defaultEffort: model.defaultEffort,
-  }))
+  const built = kept.map<ImportedModel>((model) => {
+    // Vendor levels win over whatever the gateway advertises. A model models.dev
+    // knows nothing about keeps the server's levels rather than losing the
+    // ability to reason at all.
+    const vendor = vendorEfforts(model, config, modelsDev)
+    const efforts = vendor ? vendor.efforts : model.efforts
+    const defaultEffort = vendor
+      ? // The vendor's own pick wins; without one, the gateway's if it exists
+        // in the vendor table, else the heaviest level so a selection is valid.
+        vendor.defaultEffort ??
+        (vendor.efforts.includes(model.defaultEffort ?? "")
+          ? model.defaultEffort
+          : vendor.efforts[vendor.efforts.length - 1])
+      : model.defaultEffort
+
+    return {
+      id: model.id,
+      name: model.name,
+      cost: resolveCost(model, config, modelsDev, log),
+      limit: { context: LIMIT.context, output: LIMIT.output },
+      imageInput: model.imageInput,
+      efforts,
+      defaultEffort,
+    }
+  })
 
   const credits = new Map(kept.map((model) => [model.id, model.credits]))
-  return dedupeNames(built, credits)
+  // Sorted by id so the picker is stable no matter what order the server sends.
+  const sorted = [...built].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+  return dedupeNames(sorted, credits)
 }

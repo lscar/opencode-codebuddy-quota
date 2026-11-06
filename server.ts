@@ -1,16 +1,23 @@
+import { copyFileSync, existsSync } from "node:fs"
+import { join } from "node:path"
 import { Plugin } from "@opencode/plugin"
 import { CodebuddyQuota } from "./rpc"
 import { fetchCatalog } from "./src/server/catalog"
-import { loadConfig } from "./src/server/config"
+import { configPath, loadConfig } from "./src/server/config"
+import { writeModels } from "./src/server/config-writer"
 import { createDedupedLogger } from "./src/server/logger"
-import { buildModels, type ImportedModel } from "./src/server/model-info"
+import { buildModels } from "./src/server/model-info"
 import { readModelsDevCatalog } from "./src/server/models-dev"
 import { createQuotaSource } from "./src/server/quota-source"
-import { createModelTransform } from "./src/server/transform"
 import { fetchUpstream, readApiKey } from "./src/server/upstream"
 import { toWireReading } from "./src/server/wire"
 
 const UPSTREAM_TIMEOUT_MS = 15_000
+
+/** `~/.config/opencode/opencode.jsonc`, beside `codebuddy-quota.json`. */
+function opencodeConfigPath(): string {
+  return join(configPath().replace(/[/\\]codebuddy-quota\.json$/, ""), "opencode.jsonc")
+}
 
 /** AbortSignal.any is not guaranteed in every runtime OpenCode embeds. */
 function anySignal(signals: AbortSignal[]): AbortSignal {
@@ -49,28 +56,39 @@ export default Plugin.define({
     })
 
     /**
-     * The catalog is fetched once and reused: the transform runs on every model
-     * rebuild, and hitting the endpoint each time would be both slow and rude.
-     * A rejected promise is dropped so a later rebuild retries instead of
-     * serving the failure forever.
+     * Model import happens once, at plugin load, and writes into the user's
+     * `opencode.jsonc` rather than mutating providers at runtime.
+     *
+     * `ctx.provider.transform` looks like the right hook, but in OpenCode 2.2.5
+     * the provider records it hands out are already frozen: `add()`,
+     * `models.set()` and `update()` all throw "Attempted to assign to readonly
+     * property", and a transform that throws is silently discarded. The config
+     * file is read *before* providers resolve, so it is the one place a plugin
+     * can add models that actually reach the picker.
+     *
+     * Nothing here is allowed to take the quota panel down with it.
      */
-    let models: Promise<readonly ImportedModel[]> | null = null
-    const loadModels = (): Promise<readonly ImportedModel[]> => {
-      if (!models) {
-        models = (async () => {
-          const config = loadConfig()
-          const catalog = await fetchCatalog({ key: readApiKey() })
-          return buildModels({ catalog, config, modelsDev: readModelsDevCatalog(), log })
-        })().catch((error) => {
-          models = null
-          throw error
+    if (readApiKey().trim()) {
+      try {
+        const models = buildModels({
+          catalog: await fetchCatalog({ key: readApiKey() }),
+          config: loadConfig(),
+          modelsDev: readModelsDevCatalog(),
+          log,
         })
-      }
-      return models
-    }
 
-    const transform = createModelTransform({ loadModels, log })
-    const transformRegistration = await ctx.provider.transform((editor) => transform(editor))
+        const target = opencodeConfigPath()
+        if (models.length > 0 && existsSync(target)) {
+          // A plugin editing the user's config must leave a way back.
+          copyFileSync(target, `${target}.codebuddy-quota.bak`)
+          const result = writeModels({ jsoncPath: target, models })
+          if (result.written) log(`imported ${models.length} models into ${target}; restart to pick them up`)
+          else log(`left ${target} untouched: ${result.reason}`)
+        }
+      } catch (error) {
+        log(`model import failed: ${String((error as Error)?.message ?? error)}`)
+      }
+    }
 
     const registration = await ctx.rpc.register(CodebuddyQuota, {
       // `context.signal` fires when the caller goes away (a window closed), which
@@ -78,9 +96,6 @@ export default Plugin.define({
       read: async (_input, context) => toWireReading(await source.read(context.signal)),
     })
 
-    return async () => {
-      await registration.dispose()
-      await transformRegistration.dispose()
-    }
+    return () => registration.dispose()
   },
 })

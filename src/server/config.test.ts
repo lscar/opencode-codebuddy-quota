@@ -34,17 +34,23 @@ describe("loadConfig", () => {
   })
 
   it("ships the verified default mappings", () => {
-    expect(DEFAULT_CONFIG.model_aliases).toEqual({ hy4std: "hy4", hy4free: "hy4" })
+    expect(DEFAULT_CONFIG.model_aliases).toEqual({
+      hy4std: "hy4",
+      hy4free: "hy4",
+      "deepseek-v4.1-flash": "deepseek-v4-flash",
+    })
     expect(DEFAULT_CONFIG.cost_providers).toEqual({
-      "deepseek-v4.1-flash": "opencode",
-      "deepseek-v4-pro": "opencode",
+      "deepseek-v4.1-flash": "deepseek",
+      "deepseek-v4-pro": "deepseek",
       "glm-5.3-flash": "zhipuai",
       "glm-5.3-flashx": "zhipuai",
-      "minimax-m3.1-flash": "minimax-cn",
+      "minimax-m3.1-flash": "minimax",
       "step-5-preview": "stepfun",
       "mimo-v2.6-pro": "xiaomi",
       hy4std: "tencent-tokenhub",
       hy4free: "tencent-tokenhub",
+      hy3: "tencent-tokenhub",
+      "hy3-x": "tencent-tokenhub",
     })
     expect(DEFAULT_CONFIG.excluded_models).toEqual(["space-bunny", "hy3", "hy3-x"])
     expect(DEFAULT_CONFIG.auto_prefix).toBe(true)
