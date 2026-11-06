@@ -1,6 +1,12 @@
 import { Plugin } from "@opencode/plugin"
 import { CodebuddyQuota } from "./rpc"
+import { fetchCatalog } from "./src/server/catalog"
+import { loadConfig } from "./src/server/config"
+import { createDedupedLogger } from "./src/server/logger"
+import { buildModels, type ImportedModel } from "./src/server/model-info"
+import { readModelsDevCatalog } from "./src/server/models-dev"
 import { createQuotaSource } from "./src/server/quota-source"
+import { createModelTransform } from "./src/server/transform"
 import { fetchUpstream, readApiKey } from "./src/server/upstream"
 import { toWireReading } from "./src/server/wire"
 
@@ -28,6 +34,8 @@ function anySignal(signals: AbortSignal[]): AbortSignal {
 export default Plugin.define({
   id: "codebuddy-quota",
   async setup(ctx) {
+    const log = createDedupedLogger((line) => console.warn(line), "[codebuddy-quota]")
+
     const source = createQuotaSource({
       fetchUpstream: (signal) => {
         const timeout = AbortSignal.timeout(UPSTREAM_TIMEOUT_MS)
@@ -40,12 +48,39 @@ export default Plugin.define({
       },
     })
 
+    /**
+     * The catalog is fetched once and reused: the transform runs on every model
+     * rebuild, and hitting the endpoint each time would be both slow and rude.
+     * A rejected promise is dropped so a later rebuild retries instead of
+     * serving the failure forever.
+     */
+    let models: Promise<readonly ImportedModel[]> | null = null
+    const loadModels = (): Promise<readonly ImportedModel[]> => {
+      if (!models) {
+        models = (async () => {
+          const config = loadConfig()
+          const catalog = await fetchCatalog({ key: readApiKey() })
+          return buildModels({ catalog, config, modelsDev: readModelsDevCatalog(), log })
+        })().catch((error) => {
+          models = null
+          throw error
+        })
+      }
+      return models
+    }
+
+    const transform = createModelTransform({ loadModels, log })
+    const transformRegistration = await ctx.provider.transform((editor) => transform(editor))
+
     const registration = await ctx.rpc.register(CodebuddyQuota, {
       // `context.signal` fires when the caller goes away (a window closed), which
       // is why it is threaded through rather than dropped.
       read: async (_input, context) => toWireReading(await source.read(context.signal)),
     })
 
-    return () => registration.dispose()
+    return async () => {
+      await registration.dispose()
+      await transformRegistration.dispose()
+    }
   },
 })
