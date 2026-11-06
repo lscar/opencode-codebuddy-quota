@@ -9,51 +9,71 @@ describe("loadConfig", () => {
     expect(c).toEqual(DEFAULT_CONFIG)
   })
 
-  it("merges user keys over defaults without dropping the rest", () => {
+  it("merges user mappings over defaults without dropping the rest", () => {
     const c = loadConfig({
-      readFile: () => JSON.stringify({ cost_providers: { "glm-5.3-flashx": "zai" } }),
+      readFile: () =>
+        JSON.stringify({ models: { "glm-9.9": { provider: "zhipuai", model: "glm-9.9" } } }),
     })
-    expect(c.cost_providers["glm-5.3-flashx"]).toBe("zai")
-    expect(c.cost_providers["glm-5.3-flash"]).toBe("zhipuai")
-    expect(c.default_cost_provider).toBe("opencode")
+    expect(c.models["glm-9.9"]).toEqual({ provider: "zhipuai", model: "glm-9.9" })
+    expect(c.models["glm-5.3-flash"]).toEqual({ provider: "zhipuai", model: "glm-5.3-flash" })
+  })
+
+  it("lets a user remap a shipped model", () => {
+    const c = loadConfig({
+      readFile: () =>
+        JSON.stringify({ models: { "deepseek-v4-pro": { provider: "opencode", model: "deepseek-v4-pro" } } }),
+    })
+    expect(c.models["deepseek-v4-pro"]).toEqual({ provider: "opencode", model: "deepseek-v4-pro" })
   })
 
   it("falls back to defaults on malformed JSON", () => {
-    const c = loadConfig({ readFile: () => "{ not json" })
-    expect(c).toEqual(DEFAULT_CONFIG)
+    expect(loadConfig({ readFile: () => "{ not json" })).toEqual(DEFAULT_CONFIG)
   })
 
-  it("falls back to defaults when a field has the wrong type", () => {
+  it("drops the whole models field when one entry is malformed", () => {
+    const c = loadConfig({
+      readFile: () => JSON.stringify({ models: { good: { provider: "a", model: "b" }, bad: "just-a-string" } }),
+    })
+    expect(c.models).toEqual(DEFAULT_CONFIG.models)
+  })
+
+  it("rejects an entry missing provider or model", () => {
+    const missingModel = loadConfig({
+      readFile: () => JSON.stringify({ models: { x: { provider: "a" } } }),
+    })
+    expect(missingModel.models).toEqual(DEFAULT_CONFIG.models)
+    const emptyProvider = loadConfig({
+      readFile: () => JSON.stringify({ models: { x: { provider: "", model: "b" } } }),
+    })
+    expect(emptyProvider.models).toEqual(DEFAULT_CONFIG.models)
+  })
+
+  it("falls back to defaults when excluded_models has the wrong type", () => {
     const c = loadConfig({ readFile: () => JSON.stringify({ excluded_models: "hy3" }) })
     expect(c.excluded_models).toEqual(DEFAULT_CONFIG.excluded_models)
   })
 
-  it("replaces arrays wholesale rather than concatenating", () => {
+  it("replaces excluded_models wholesale rather than concatenating", () => {
     const c = loadConfig({ readFile: () => JSON.stringify({ excluded_models: ["hy3"] }) })
     expect(c.excluded_models).toEqual(["hy3"])
   })
 
-  it("ships the verified default mappings", () => {
-    expect(DEFAULT_CONFIG.model_aliases).toEqual({
-      hy4std: "hy4",
-      hy4free: "hy4",
-      "deepseek-v4.1-flash": "deepseek-v4-flash",
+  it("ships a mapping that points every default model at its vendor", () => {
+    expect(DEFAULT_CONFIG.models["deepseek-v4-pro"]).toEqual({ provider: "deepseek", model: "deepseek-v4-pro" })
+    expect(DEFAULT_CONFIG.models["deepseek-v4.1-flash"]).toEqual({
+      provider: "deepseek",
+      model: "deepseek-v4-flash",
     })
-    expect(DEFAULT_CONFIG.cost_providers).toEqual({
-      "deepseek-v4.1-flash": "deepseek",
-      "deepseek-v4-pro": "deepseek",
-      "glm-5.3-flash": "zhipuai",
-      "glm-5.3-flashx": "zhipuai",
-      "minimax-m3.1-flash": "minimax",
-      "step-5-preview": "stepfun",
-      "mimo-v2.6-pro": "xiaomi",
-      hy4std: "tencent-tokenhub",
-      hy4free: "tencent-tokenhub",
-      hy3: "tencent-tokenhub",
-      "hy3-x": "tencent-tokenhub",
+    expect(DEFAULT_CONFIG.models["minimax-m3.1-flash"]).toEqual({
+      provider: "minimax-cn",
+      model: "MiniMax-M3.1-Flash",
     })
+    expect(DEFAULT_CONFIG.models.hy4std).toEqual({ provider: "tencent-tokenhub", model: "hy4" })
+    // Mapped so the mapping stays complete, held back by excluded_models.
+    expect(DEFAULT_CONFIG.models.hy3).toBeDefined()
+    // Space-Bunny is the same model as minimax-m3.1-flash under another id.
+    expect(DEFAULT_CONFIG.models["space-bunny"]).toEqual(DEFAULT_CONFIG.models["minimax-m3.1-flash"])
     expect(DEFAULT_CONFIG.excluded_models).toEqual(["space-bunny", "hy3", "hy3-x"])
-    expect(DEFAULT_CONFIG.auto_prefix).toBe(true)
   })
 
   it("keeps config.default.json in sync with the runtime constant", () => {

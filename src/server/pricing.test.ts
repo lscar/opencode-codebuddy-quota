@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test"
-import { DEFAULT_CONFIG } from "./config"
-import { findEntry, providerFor, resolveCost } from "./pricing"
+import type { ModelMapping } from "./config"
+import { findEntry, resolveCost, vendorEfforts } from "./pricing"
 
 const cat = (models: Record<string, unknown>) => models as any
 
@@ -32,105 +32,127 @@ const catalog = cat({
   },
 })
 
-const m = (id: string, credits: number | null = 0.5) => ({
-  id, name: id, credits, context: null, output: null, imageInput: false, efforts: [], defaultEffort: null,
-})
+const m = (id: string, credits: number | null = 0.5) => ({ id, credits })
+
+const mapping = (provider: string, model: string): ModelMapping => ({ provider, model })
 
 const quiet = () => {}
 
 describe("zero credits", () => {
   it("returns a zero cost and skips the catalog entirely", () => {
-    expect(resolveCost(m("hy4free", 0), DEFAULT_CONFIG, catalog, quiet)).toEqual([
+    expect(resolveCost(m("hy4free", 0), mapping("tencent-tokenhub", "hy4"), catalog, quiet)).toEqual([
       { input: 0, output: 0, cache: { read: 0, write: 0 } },
     ])
   })
 
   it("does not treat an unknown (null) credits value as free", () => {
-    const [c] = resolveCost(m("glm-5.3-flash", null), DEFAULT_CONFIG, catalog, quiet)
+    const [c] = resolveCost(m("glm-5.3-flash", null), mapping("zhipuai", "glm-5.3-flash"), catalog, quiet)
     expect(c.input).toBeCloseTo(0.11952, 5)
   })
 })
 
-describe("explicit cost_providers", () => {
-  it("uses the configured provider", () => {
-    const [c] = resolveCost(m("glm-5.3-flash"), DEFAULT_CONFIG, catalog, quiet)
+describe("explicit mappings", () => {
+  it("prices from the mapped provider", () => {
+    const [c] = resolveCost(m("glm-5.3-flash"), mapping("zhipuai", "glm-5.3-flash"), catalog, quiet)
     expect(c.input).toBeCloseTo(0.11952, 5)
     expect(c.output).toBeCloseTo(0.41831, 5)
   })
 
+  it("follows a renamed model id", () => {
+    const [c] = resolveCost(m("deepseek-v4.1-flash"), mapping("deepseek", "deepseek-v4-flash"), catalog, quiet)
+    expect(c.input).toBeCloseTo(0.15, 5)
+    expect(c.output).toBeCloseTo(0.6, 5)
+  })
+
   it("matches model ids case-insensitively", () => {
-    const [c] = resolveCost(m("minimax-m3.1-flash"), DEFAULT_CONFIG, catalog, quiet)
+    const [c] = resolveCost(
+      m("minimax-m3.1-flash"),
+      mapping("minimax", "minimax-m3.1-flash"),
+      catalog,
+      quiet,
+    )
     expect(c).toBeDefined()
     expect(c.input).toBeCloseTo(0.15, 5)
   })
 
-  it("applies model_aliases before lookup", () => {
-    const [c] = resolveCost(m("hy4std"), DEFAULT_CONFIG, catalog, quiet)
-    expect(c.input).toBeCloseTo(0.834, 5)
-  })
-})
-
-describe("prefix fallback", () => {
-  it("derives the provider from the model id when cost_providers has no entry", () => {
-    expect(providerFor("glm-9.9-flash", DEFAULT_CONFIG)).toBe("zhipuai")
-    expect(providerFor("kimi-k9", DEFAULT_CONFIG)).toBe("moonshotai-cn")
-    expect(providerFor("brand-new-model", DEFAULT_CONFIG)).toBe("opencode")
-  })
-
-  it("is skipped when auto_prefix is false", () => {
-    const off = { ...DEFAULT_CONFIG, auto_prefix: false }
-    expect(providerFor("glm-9.9-flash", off)).toBe("opencode")
-  })
-})
-
-describe("lookup failures", () => {
-  it("returns nothing rather than prefix-matching a -free sibling", () => {
-    // 目录里只有零价的 step-5-preview-free，没有 step-5-preview。
-    // 若实现做了前缀/包含匹配，就会命中 -free 返回 0 价；正确实现必须返回空。
-    const onlyFree = cat({
-      "opencode-go": { models: { "step-5-preview-free": entry(0, 0) } },
-    })
-    const cfg = { ...DEFAULT_CONFIG, cost_providers: {}, auto_prefix: false, default_cost_provider: "opencode-go" }
-    expect(resolveCost(m("step-5-preview"), cfg, onlyFree, quiet)).toEqual([])
-  })
-
-  it("falls back to default_cost_provider and logs when the primary provider lacks the model", () => {
-    const logged: string[] = []
-    // 首选 provider 指定为 xiaomi（目录里没有 glm-5.3-flash），回退到 default=zhipuai
-    const cfg = {
-      ...DEFAULT_CONFIG,
-      cost_providers: { "glm-5.3-flash": "xiaomi" },
-      auto_prefix: false,
-      default_cost_provider: "zhipuai",
-    }
-    const [c] = resolveCost(m("glm-5.3-flash"), cfg, catalog, (s) => logged.push(s))
-    expect(c.input).toBeCloseTo(0.11952, 5)
-    expect(logged.length).toBeGreaterThan(0)
-  })
-
-  it("returns an empty cost array when nothing matches, and logs", () => {
-    const logged: string[] = []
-    const cfg = { ...DEFAULT_CONFIG, default_cost_provider: "nope" }
-    expect(resolveCost(m("totally-unknown"), cfg, catalog, (s) => logged.push(s))).toEqual([])
-  })
-
-  it("returns an empty cost array when the catalog is unavailable", () => {
-    const logged: string[] = []
-    expect(resolveCost(m("glm-5.3-flash"), DEFAULT_CONFIG, null, (s) => logged.push(s))).toEqual([])
-    expect(logged.length).toBeGreaterThan(0)
-  })
-
   it("defaults missing cache.write to zero", () => {
-    const [c] = resolveCost(m("deepseek-v4.1-flash"), DEFAULT_CONFIG, catalog, quiet)
+    const [c] = resolveCost(m("deepseek-v4.1-flash"), mapping("deepseek", "deepseek-v4-flash"), catalog, quiet)
     expect(c.cache.write).toBe(0)
     expect(c.cache.read).toBeCloseTo(0.003, 6)
   })
 })
 
-describe("findEntry", () => {
-  it("prefers an exact id and falls back to case-insensitive", () => {
-    expect(findEntry(catalog, "minimax", "MiniMax-M3.1-Flash")).toBeDefined()
-    expect(findEntry(catalog, "minimax", "minimax-m3.1-flash")).toBeDefined()
-    expect(findEntry(catalog, "minimax", "minimax-m3.1-flash-free")).toBeUndefined()
+describe("lookup failures", () => {
+  it("returns an empty cost array when there is no mapping", () => {
+    const logged: string[] = []
+    expect(resolveCost(m("unmapped"), undefined, catalog, (s) => logged.push(s))).toEqual([])
+    expect(logged.join(" ")).toContain("no models.dev mapping")
+  })
+
+  it("returns nothing rather than prefix-matching a -free sibling", () => {
+    // 目录里只有零价的 step-5-preview-free，没有 step-5-preview。
+    const onlyFree = cat({ "opencode-go": { models: { "step-5-preview-free": entry(0, 0) } } })
+    expect(
+      resolveCost(m("step-5-preview"), mapping("opencode-go", "step-5-preview"), onlyFree, quiet),
+    ).toEqual([])
+  })
+
+  it("returns an empty cost array when the mapped provider lacks the model, and logs", () => {
+    const logged: string[] = []
+    expect(
+      resolveCost(m("glm-5.3-flash"), mapping("xiaomi", "glm-5.3-flash"), catalog, (s) => logged.push(s)),
+    ).toEqual([])
+    expect(logged.join(" ")).toContain("xiaomi")
+  })
+
+  it("returns an empty cost array when the catalog is unavailable", () => {
+    const logged: string[] = []
+    expect(
+      resolveCost(m("glm-5.3-flash"), mapping("zhipuai", "glm-5.3-flash"), null, (s) => logged.push(s)),
+    ).toEqual([])
+    expect(logged.length).toBeGreaterThan(0)
+  })
+})
+
+describe("vendorEfforts", () => {
+  const withReasoning = cat({
+    deepseek: {
+      models: {
+        "deepseek-v4-pro": {
+          capabilities: {
+            reasoning: { supported: true, toggle: true, effort: ["low", "high", "max"], default: { type: "effort", value: "max" } },
+          },
+        },
+      },
+    },
+    xiaomi: { models: { "mimo-v2.6-pro": {} } },
+  })
+
+  it("returns the vendor's levels and its own default", () => {
+    expect(vendorEfforts(mapping("deepseek", "deepseek-v4-pro"), withReasoning)).toEqual({
+      efforts: ["low", "high", "max"],
+      toggle: true,
+      defaultEffort: "max",
+    })
+  })
+
+  it("returns null when the vendor declares no effort table", () => {
+    expect(vendorEfforts(mapping("xiaomi", "mimo-v2.6-pro"), withReasoning)).toBe(null)
+  })
+
+  it("returns null for an unmapped model or a missing catalog", () => {
+    expect(vendorEfforts(undefined, withReasoning)).toBe(null)
+    expect(vendorEfforts(mapping("deepseek", "deepseek-v4-pro"), null)).toBe(null)
+  })
+
+  it("ignores a default that is not one of the levels", () => {
+    const odd = cat({
+      p: {
+        models: {
+          x: { capabilities: { reasoning: { effort: ["low", "high"], default: { value: "xhigh" } } } },
+        },
+      },
+    })
+    expect(vendorEfforts(mapping("p", "x"), odd)?.defaultEffort).toBe(null)
   })
 })

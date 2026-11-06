@@ -1,9 +1,13 @@
-import type { QuotaConfig } from "./config"
+import type { ModelMapping, QuotaConfig } from "./config"
 
 /**
- * Pricing for a CodeBuddy model, taken from the models.dev catalog that
- * OpenCode keeps locally. The catalog is looked up by provider *and* model id,
- * because the same model carries different prices depending on who resells it.
+ * Pricing and reasoning levels for a CodeBuddy model, taken from the models.dev
+ * catalog that OpenCode keeps locally.
+ *
+ * Every lookup goes through the user's `models` map: a model is only offered
+ * because someone wrote down where it lives, so there is nothing to guess. The
+ * same model carries different prices and levels depending on who resells it,
+ * which is exactly why the mapping names the provider rather than inferring it.
  */
 
 export interface ModelsDevCost {
@@ -37,31 +41,23 @@ export interface ModelCost {
   cache: { read: number; write: number }
 }
 
-/** What `resolveCost` needs from a catalog model; keeps this module independent of `catalog.ts`. */
+/** What a lookup needs: the models.dev coordinates plus the credit multiplier. */
 export interface PricedModel {
   id: string
   /** Credit multiplier. `0` means the model is free; `null` means the server did not say. */
   credits: number | null
 }
 
-/**
- * Model-id prefixes that identify the model's own vendor. Used only when
- * `cost_providers` has no entry for the model, so a newly added model still
- * gets a plausible price instead of none. Order matters: longer, more specific
- * prefixes come first.
- */
-export const PREFIX_PROVIDERS: readonly (readonly [string, string])[] = [
-  ["deepseek-", "opencode"],
-  ["glm-", "zhipuai"],
-  ["minimax-", "minimax-cn"],
-  ["step-", "stepfun"],
-  ["mimo-", "xiaomi"],
-  ["kimi-", "moonshotai-cn"],
-  ["hy4", "tencent-tokenhub"],
-  ["hy3", "tencent-tokenhub"],
-]
-
 const ZERO_COST: ModelCost = { input: 0, output: 0, cache: { read: 0, write: 0 } }
+
+/** The models.dev entry a CodeBuddy model maps to, or undefined when unmapped or absent. */
+export function mappingEntry(
+  catalog: ModelsDevCatalog | null,
+  mapping: ModelMapping | undefined,
+): ModelsDevEntry | undefined {
+  if (!catalog || !mapping) return undefined
+  return catalog[mapping.provider]?.models?.[mapping.model]
+}
 
 /**
  * Exact id first, then a case-insensitive pass — the server writes
@@ -89,19 +85,6 @@ export function findEntry(
   return undefined
 }
 
-/** Which catalog provider to price a model from, before checking whether it exists there. */
-export function providerFor(id: string, config: QuotaConfig): string {
-  const explicit = config.cost_providers[id]
-  if (explicit) return explicit
-
-  if (config.auto_prefix) {
-    for (const [prefix, provider] of PREFIX_PROVIDERS) {
-      if (id.startsWith(prefix)) return provider
-    }
-  }
-  return config.default_cost_provider
-}
-
 function toCost(entry: ModelsDevEntry): ModelCost | null {
   const text = entry.cost?.text
   const input = text?.input?.price
@@ -116,82 +99,12 @@ function toCost(entry: ModelsDevEntry): ModelCost | null {
 }
 
 /**
- * Resolve a model's entry, returning `[]` when no price can be trusted — an
- * unpriced model is better than a wrong one. Every miss is reported through
- * `log` so a stale `cost_providers` entry is visible rather than silent.
+ * Resolve a model's price, returning `[]` when no price can be trusted — an
+ * unpriced model is better than a wrong one.
  */
-function findPricedEntry(
-  model: PricedModel,
-  config: QuotaConfig,
-  catalog: ModelsDevCatalog | null,
-  log: (message: string) => void,
-): ModelsDevEntry | null {
-  if (!catalog) {
-    log(`models.dev catalog unavailable; ${model.id} stays unpriced`)
-    return null
-  }
-
-  const modelID = config.model_aliases[model.id] ?? model.id
-  const primary = providerFor(model.id, config)
-
-  const direct = findEntry(catalog, primary, modelID)
-  if (direct) {
-    if (toCost(direct)) return direct
-    log(`${primary}/${modelID} has no text pricing`)
-  } else {
-    log(`${primary} has no entry for ${modelID}`)
-  }
-
-  const fallback = config.default_cost_provider
-  if (fallback !== primary) {
-    const entry = findEntry(catalog, fallback, modelID)
-    if (entry) {
-      if (toCost(entry)) return entry
-      log(`${fallback}/${modelID} has no text pricing`)
-    } else {
-      log(`${fallback} has no entry for ${modelID} either`)
-    }
-  }
-
-  log(`no price for ${model.id}; leaving it unpriced`)
-  return null
-}
-
-/**
- * The vendor's own reasoning levels for a model, or null when models.dev has
- * none. CodeBuddy's gateway rewrites some of these (it swaps `max` for `xhigh`
- * on `deepseek-v4-pro`, for instance), but the vendor table is what was asked
- * for, and a level the gateway rejects is a visible failure rather than a
- * silent one.
- */
-export function vendorEfforts(
-  model: PricedModel,
-  config: QuotaConfig,
-  catalog: ModelsDevCatalog | null,
-): { efforts: string[]; toggle: boolean; defaultEffort: string | null } | null {
-  if (!catalog) return null
-
-  const modelID = config.model_aliases[model.id] ?? model.id
-  const providers = [providerFor(model.id, config), config.default_cost_provider]
-  for (const provider of providers) {
-    const reasoning = findEntry(catalog, provider, modelID)?.capabilities?.reasoning
-    if (reasoning?.effort && reasoning.effort.length > 0) {
-      const declared =
-        typeof reasoning.default === "string" ? reasoning.default : reasoning.default?.value ?? null
-      return {
-        efforts: [...reasoning.effort],
-        toggle: reasoning.toggle === true,
-        // Only honour a vendor default that is actually one of its levels.
-        defaultEffort: declared && reasoning.effort.includes(declared) ? declared : null,
-      }
-    }
-  }
-  return null
-}
-
 export function resolveCost(
   model: PricedModel,
-  config: QuotaConfig,
+  mapping: ModelMapping | undefined,
   catalog: ModelsDevCatalog | null,
   log: (message: string) => void,
 ): ModelCost[] {
@@ -199,8 +112,47 @@ export function resolveCost(
   // would contradict the credit factor the server reported.
   if (model.credits === 0) return [ZERO_COST]
 
-  const entry = findPricedEntry(model, config, catalog, log)
-  if (!entry) return []
+  if (!catalog) {
+    log(`models.dev catalog unavailable; ${model.id} stays unpriced`)
+    return []
+  }
+  if (!mapping) {
+    log(`${model.id} has no models.dev mapping; leaving it unpriced`)
+    return []
+  }
+
+  const entry = findEntry(catalog, mapping.provider, mapping.model)
+  if (!entry) {
+    log(`${mapping.provider} has no entry for ${mapping.model} (${model.id}); leaving it unpriced`)
+    return []
+  }
   const cost = toCost(entry)
-  return cost ? [cost] : []
+  if (!cost) {
+    log(`${mapping.provider}/${mapping.model} has no text pricing; ${model.id} stays unpriced`)
+    return []
+  }
+  return [cost]
+}
+
+/**
+ * The vendor's own reasoning levels for a model, or null when models.dev has
+ * none for it. CodeBuddy's gateway rewrites some of these (it swaps `max` for
+ * `xhigh` on `deepseek-v4-pro`, for instance), but the vendor table is the
+ * source of record here.
+ */
+export function vendorEfforts(
+  mapping: ModelMapping | undefined,
+  catalog: ModelsDevCatalog | null,
+): { efforts: string[]; toggle: boolean; defaultEffort: string | null } | null {
+  const reasoning = mappingEntry(catalog, mapping)?.capabilities?.reasoning
+  const efforts = reasoning?.effort
+  if (!efforts || efforts.length === 0) return null
+
+  const declared = typeof reasoning.default === "string" ? reasoning.default : reasoning.default?.value ?? null
+  return {
+    efforts: [...efforts],
+    toggle: reasoning.toggle === true,
+    // Only honour a vendor default that is actually one of its levels.
+    defaultEffort: declared && efforts.includes(declared) ? declared : null,
+  }
 }

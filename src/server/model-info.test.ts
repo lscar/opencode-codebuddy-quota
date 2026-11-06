@@ -23,6 +23,28 @@ describe("buildModels", () => {
     expect(ids).not.toContain("hy3")
   })
 
+  it("drops a model that has no mapping, and says why", () => {
+    const logged: string[] = []
+    const built = buildModels({
+      catalog: [model("brand-new-model", "Brand New", 0.5), model("glm-5.3-flash", "GLM-5.3-Flash", 0.08)],
+      config: DEFAULT_CONFIG, modelsDev: null, log: (s) => logged.push(s),
+    })
+    expect(built.map((m) => m.id)).toEqual(["glm-5.3-flash"])
+    expect(logged.join(" ")).toContain("brand-new-model")
+  })
+
+  it("keeps the credits label even without a models.dev entry", () => {
+    const built = buildModels({
+      catalog: [model("hy4free", "Hy4", 0), model("hy4std", "Hy4", 0.29)],
+      config: DEFAULT_CONFIG,
+      modelsDev: null,
+      log: () => {},
+    })
+    const names = Object.fromEntries(built.map((m) => [m.id, m.name]))
+    expect(names.hy4free).toBe("Hy4(x0.00)")
+    expect(names.hy4std).toBe("Hy4(x0.29)")
+  })
+
   it("appends the credits factor only where names collide", () => {
     const names = Object.fromEntries(run().map((m) => [m.id, m.name]))
     expect(names.hy4free).toBe("Hy4(x0.00)")
@@ -108,13 +130,5 @@ describe("buildModels", () => {
   it("sorts the result by model id", () => {
     const ids = run().map((m) => m.id)
     expect(ids).toEqual([...ids].sort())
-  })
-
-  it("leaves a group unsuffixed once it is down to one member", () => {
-    const only = buildModels({
-      catalog: [model("hy4std", "Hy4", 0.29)],
-      config: DEFAULT_CONFIG, modelsDev: null, log: () => {},
-    })
-    expect(only[0].name).toBe("Hy4")
   })
 })

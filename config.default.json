@@ -1,23 +1,17 @@
 {
-  "model_aliases": {
-    "hy4std": "hy4",
-    "hy4free": "hy4",
-    "deepseek-v4.1-flash": "deepseek-v4-flash"
+  "models": {
+    "deepseek-v4-pro": { "provider": "deepseek", "model": "deepseek-v4-pro" },
+    "deepseek-v4.1-flash": { "provider": "deepseek", "model": "deepseek-v4-flash" },
+    "glm-5.3-flash": { "provider": "zhipuai", "model": "glm-5.3-flash" },
+    "glm-5.3-flashx": { "provider": "zhipuai", "model": "glm-5.3-flashx" },
+    "minimax-m3.1-flash": { "provider": "minimax-cn", "model": "MiniMax-M3.1-Flash" },
+    "step-5-preview": { "provider": "stepfun", "model": "step-5-preview" },
+    "mimo-v2.6-pro": { "provider": "xiaomi", "model": "mimo-v2.6-pro" },
+    "hy4std": { "provider": "tencent-tokenhub", "model": "hy4" },
+    "hy4free": { "provider": "tencent-tokenhub", "model": "hy4" },
+    "hy3": { "provider": "tencent-tokenhub", "model": "hy3" },
+    "hy3-x": { "provider": "tencent-tokenhub", "model": "hy3" },
+    "space-bunny": { "provider": "minimax-cn", "model": "MiniMax-M3.1-Flash" }
   },
-  "cost_providers": {
-    "deepseek-v4.1-flash": "deepseek",
-    "deepseek-v4-pro": "deepseek",
-    "glm-5.3-flash": "zhipuai",
-    "glm-5.3-flashx": "zhipuai",
-    "minimax-m3.1-flash": "minimax",
-    "step-5-preview": "stepfun",
-    "mimo-v2.6-pro": "xiaomi",
-    "hy4std": "tencent-tokenhub",
-    "hy4free": "tencent-tokenhub",
-    "hy3": "tencent-tokenhub",
-    "hy3-x": "tencent-tokenhub"
-  },
-  "default_cost_provider": "opencode",
-  "excluded_models": ["space-bunny", "hy3", "hy3-x"],
-  "auto_prefix": true
+  "excluded_models": ["space-bunny", "hy3", "hy3-x"]
 }

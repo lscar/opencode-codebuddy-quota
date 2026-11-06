@@ -2,18 +2,20 @@ import { readFileSync } from "node:fs"
 import { homedir } from "node:os"
 import { join } from "node:path"
 
+/** Where a CodeBuddy model lives in the models.dev catalog. */
+export interface ModelMapping {
+  /** models.dev provider id, e.g. `deepseek`, `zhipuai`, `tencent-tokenhub`. */
+  provider: string
+  /** The id the provider files the model under, which is not always CodeBuddy's. */
+  model: string
+}
+
 /** Keys the user may override; everything else in the file is ignored. */
 export interface QuotaConfig {
-  /** CodeBuddy model id → the id the models.dev catalog knows it by. */
-  model_aliases: Record<string, string>
-  /** CodeBuddy model id → the models.dev provider to take pricing from. */
-  cost_providers: Record<string, string>
-  /** Provider used when `cost_providers` has no entry (or its entry lacks the model). */
-  default_cost_provider: string
-  /** Models that must not be injected into OpenCode at all. */
+  /** CodeBuddy model id → its models.dev entry. A model absent here is never offered. */
+  models: Record<string, ModelMapping>
+  /** Hard block, applied on top of `models`: listed ids are dropped even when mapped. */
   excluded_models: string[]
-  /** Derive the provider from the model id prefix when `cost_providers` has no entry. */
-  auto_prefix: boolean
 }
 
 /**
@@ -22,28 +24,23 @@ export interface QuotaConfig {
  * plugin load time. A test asserts the two never drift apart.
  */
 export const DEFAULT_CONFIG: QuotaConfig = {
-  model_aliases: {
-    hy4std: "hy4",
-    hy4free: "hy4",
+  models: {
+    "deepseek-v4-pro": { provider: "deepseek", model: "deepseek-v4-pro" },
     // CodeBuddy's revision of v4.1-flash is the vendor's plain v4-flash.
-    "deepseek-v4.1-flash": "deepseek-v4-flash",
+    "deepseek-v4.1-flash": { provider: "deepseek", model: "deepseek-v4-flash" },
+    "glm-5.3-flash": { provider: "zhipuai", model: "glm-5.3-flash" },
+    "glm-5.3-flashx": { provider: "zhipuai", model: "glm-5.3-flashx" },
+    "minimax-m3.1-flash": { provider: "minimax-cn", model: "MiniMax-M3.1-Flash" },
+    "step-5-preview": { provider: "stepfun", model: "step-5-preview" },
+    "mimo-v2.6-pro": { provider: "xiaomi", model: "mimo-v2.6-pro" },
+    hy4std: { provider: "tencent-tokenhub", model: "hy4" },
+    hy4free: { provider: "tencent-tokenhub", model: "hy4" },
+    hy3: { provider: "tencent-tokenhub", model: "hy3" },
+    "hy3-x": { provider: "tencent-tokenhub", model: "hy3" },
+    // Same model as minimax-m3.1-flash; CodeBuddy just bills it under its own id.
+    "space-bunny": { provider: "minimax-cn", model: "MiniMax-M3.1-Flash" },
   },
-  cost_providers: {
-    "deepseek-v4.1-flash": "deepseek",
-    "deepseek-v4-pro": "deepseek",
-    "glm-5.3-flash": "zhipuai",
-    "glm-5.3-flashx": "zhipuai",
-    "minimax-m3.1-flash": "minimax",
-    "step-5-preview": "stepfun",
-    "mimo-v2.6-pro": "xiaomi",
-    hy4std: "tencent-tokenhub",
-    hy4free: "tencent-tokenhub",
-    hy3: "tencent-tokenhub",
-    "hy3-x": "tencent-tokenhub",
-  },
-  default_cost_provider: "opencode",
   excluded_models: ["space-bunny", "hy3", "hy3-x"],
-  auto_prefix: true,
 }
 
 export const CONFIG_FILE_NAME = "codebuddy-quota.json"
@@ -57,13 +54,20 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
 }
 
-/** A string→string map; a single bad entry drops the whole field rather than half-applying it. */
-function stringMap(value: unknown): Record<string, string> | undefined {
+/**
+ * `{ codebuddyId: { provider, model } }`. A single malformed entry drops the
+ * whole field rather than half-applying it — a partially understood model list
+ * is worse than the shipped one.
+ */
+function modelMap(value: unknown): Record<string, ModelMapping> | undefined {
   if (!isRecord(value)) return undefined
-  const out: Record<string, string> = {}
-  for (const [k, v] of Object.entries(value)) {
-    if (typeof v !== "string" || v.length === 0) return undefined
-    out[k] = v
+  const out: Record<string, ModelMapping> = {}
+  for (const [id, entry] of Object.entries(value)) {
+    if (id.length === 0 || !isRecord(entry)) return undefined
+    const { provider, model } = entry as Record<string, unknown>
+    if (typeof provider !== "string" || provider.length === 0) return undefined
+    if (typeof model !== "string" || model.length === 0) return undefined
+    out[id] = { provider, model }
   }
   return out
 }
@@ -84,12 +88,11 @@ export interface LoadConfigDeps {
 }
 
 /**
- * The user file is layered over the defaults. The two map fields merge one
- * level deep, because a user who overrides a single provider should not have
- * to repeat the other eight; every other field replaces wholesale. A field
- * that fails validation silently keeps its default so one typo cannot take the
- * rest down. This function never throws — a broken config must not stop the
- * quota panel.
+ * The user file is layered over the defaults: `models` merges one level deep so
+ * a user who adds a model does not have to repeat the twelve shipped ones, while
+ * `excluded_models` replaces wholesale. A field that fails validation silently
+ * keeps its default so one typo cannot take the rest down. This function never
+ * throws — a broken config must not stop the quota panel.
  */
 export function loadConfig(deps: LoadConfigDeps = {}): QuotaConfig {
   const path = deps.configPath ?? configPath()
@@ -103,20 +106,11 @@ export function loadConfig(deps: LoadConfigDeps = {}): QuotaConfig {
   }
   if (!isRecord(parsed)) return DEFAULT_CONFIG
 
-  const aliases = stringMap(parsed.model_aliases)
-  const providers = stringMap(parsed.cost_providers)
+  const models = modelMap(parsed.models)
   const excluded = stringList(parsed.excluded_models)
-  const fallback =
-    typeof parsed.default_cost_provider === "string" && parsed.default_cost_provider.length > 0
-      ? parsed.default_cost_provider
-      : undefined
-  const autoPrefix = typeof parsed.auto_prefix === "boolean" ? parsed.auto_prefix : undefined
 
   return {
-    model_aliases: aliases ? { ...DEFAULT_CONFIG.model_aliases, ...aliases } : DEFAULT_CONFIG.model_aliases,
-    cost_providers: providers ? { ...DEFAULT_CONFIG.cost_providers, ...providers } : DEFAULT_CONFIG.cost_providers,
-    default_cost_provider: fallback ?? DEFAULT_CONFIG.default_cost_provider,
+    models: models ? { ...DEFAULT_CONFIG.models, ...models } : DEFAULT_CONFIG.models,
     excluded_models: excluded ?? DEFAULT_CONFIG.excluded_models,
-    auto_prefix: autoPrefix ?? DEFAULT_CONFIG.auto_prefix,
   }
 }

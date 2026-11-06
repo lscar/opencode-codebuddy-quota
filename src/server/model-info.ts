@@ -4,7 +4,7 @@ import { resolveCost, vendorEfforts, type ModelCost, type ModelsDevCatalog } fro
 
 /**
  * Turns the CodeBuddy catalog into the shape a provider needs: models filtered
- * by the user's exclusions, priced, and renamed where two of them would
+ * down to the ones the user mapped, priced, and renamed where two of them would
  * otherwise be indistinguishable in a model picker.
  */
 
@@ -55,17 +55,29 @@ export function buildModels(deps: BuildModelsDeps): readonly ImportedModel[] {
   const { config, modelsDev, log } = deps
   const excluded = new Set(config.excluded_models)
 
-  const kept = deps.catalog.filter((model) => !excluded.has(model.id))
+  // A model the user has not mapped is not offered at all: without a models.dev
+  // entry there is no price and no vendor reasoning table, and guessing either
+  // would put a model in the picker that cannot be described correctly.
+  const kept: CatalogModel[] = []
+  for (const model of deps.catalog) {
+    if (excluded.has(model.id)) continue
+    if (!config.models[model.id]) {
+      log(`${model.id} has no models entry in codebuddy-quota.json; not offered`)
+      continue
+    }
+    kept.push(model)
+  }
 
   const built = kept.map<ImportedModel>((model) => {
+    const mapping = config.models[model.id]
     // Vendor levels win over whatever the gateway advertises. A model models.dev
     // knows nothing about keeps the server's levels rather than losing the
     // ability to reason at all.
-    const vendor = vendorEfforts(model, config, modelsDev)
+    const vendor = vendorEfforts(mapping, modelsDev)
     const efforts = vendor ? vendor.efforts : model.efforts
     const defaultEffort = vendor
-      ? // The vendor's own pick wins; without one, the gateway's if it exists
-        // in the vendor table, else the heaviest level so a selection is valid.
+      ? // The vendor's own pick wins; without one, the gateway's if it exists in
+        // the vendor table, else the heaviest level so a selection is valid.
         vendor.defaultEffort ??
         (vendor.efforts.includes(model.defaultEffort ?? "")
           ? model.defaultEffort
@@ -75,7 +87,7 @@ export function buildModels(deps: BuildModelsDeps): readonly ImportedModel[] {
     return {
       id: model.id,
       name: model.name,
-      cost: resolveCost(model, config, modelsDev, log),
+      cost: resolveCost(model, mapping, modelsDev, log),
       limit: { context: LIMIT.context, output: LIMIT.output },
       imageInput: model.imageInput,
       efforts,

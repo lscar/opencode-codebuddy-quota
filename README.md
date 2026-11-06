@@ -38,7 +38,7 @@ Key 不会进入窗口进程，也不会出现在 RPC 响应里。
 
 插件每次启动会从 `https://copilot.tencent.com/v3/config` 拉取当前 Key 可用的模型清单，
 写进 `~/.config/opencode/opencode.jsonc` 里 `codebuddy` provider 的 `models`。
-清单跟着账号变，换 Key、开新模型都不用改配置。
+**只导入配置表里写明的模型**，其余一律不展示。
 
 - **只替换 `models` 这一段**，package、endpoint、apiKey、以及文件里其他任何键都不动；
   注释和排版也保留，写进去的每个模型是紧凑的单行，和你手写的样子一致。
@@ -49,40 +49,43 @@ Key 不会进入窗口进程，也不会出现在 RPC 响应里。
 
 改完需要重启 opencode 才会读到新模型（配置在 provider 解析之前读入）。
 
-模型单价取自 OpenCode 本地缓存的 models.dev 数据（美元），不做汇率换算；额度本身按 credits
-计费，所以这里的价格只用来让界面能显示花费，**不要当成真实账单**。
-`credits` 为 `x0.00` 的模型按零价处理。
+模型单价、上下文/输出上限、思考档位都取自 OpenCode 本地缓存的 models.dev 数据。
+价格是美元且不做汇率换算；额度本身按 credits 计费，所以这里的价格只用来让界面能显示花费，
+**不要当成真实账单**。`credits` 为 `x0.00` 的模型按零价处理。
+所有模型的 `limit` 固定为 context 500000 / output 64000。
 
 ### 配置文件
 
-可选，路径 `~/.config/opencode/codebuddy-quota.json`。只读不写，缺失时用内置默认值：
+可选，路径 `~/.config/opencode/codebuddy-quota.json`。只读不写，缺失时用内置默认值。
+只有两个字段：
 
 ```json
 {
-  "model_aliases": { "hy4std": "hy4", "hy4free": "hy4" },
-  "cost_providers": { "glm-5.3-flash": "zhipuai" },
-  "default_cost_provider": "opencode",
-  "excluded_models": ["space-bunny", "hy3", "hy3-x"],
-  "auto_prefix": true
+  "models": {
+    "deepseek-v4-pro": { "provider": "deepseek", "model": "deepseek-v4-pro" },
+    "deepseek-v4.1-flash": { "provider": "deepseek", "model": "deepseek-v4-flash" },
+    "glm-5.3-flash": { "provider": "zhipuai", "model": "glm-5.3-flash" },
+    "hy4std": { "provider": "tencent-tokenhub", "model": "hy4" },
+    "space-bunny": { "provider": "opencode-go", "model": "space-bunny" }
+  },
+  "excluded_models": ["space-bunny", "hy3", "hy3-x"]
 }
 ```
 
 | 字段 | 作用 |
 | --- | --- |
-| `model_aliases` | CodeBuddy 的模型 id → models.dev 里的 id，同名不同版本时用 |
-| `cost_providers` | 模型 id → 到哪个 models.dev provider 取价；这里写的会与默认映射合并，其余的默认项保留 |
-| `default_cost_provider` | 上面都没命中时的兜底 provider |
-| `excluded_models` | 完全不注入的模型 id，整体替换默认值 |
-| `auto_prefix` | 按模型 id 前缀猜 provider（`glm-` → `zhipuai` 等）；关掉就一律用 `default_cost_provider` |
+| `models` | CodeBuddy 的模型 id → models.dev 里的 `{ provider, model }`。**不写就不展示**；写了的会与内置默认表合并，可以覆盖默认项，也可以加新模型 |
+| `excluded_models` | 额外的强制排除。即使 `models` 里写了，这里的 id 也不会出现。整体替换默认值 |
 
-某个模型在 models.dev 里查不到价格时不会被猜成近似的同族模型（那里有一堆 `-free` 零价条目），
-只会留空并在控制台报一次原因。
+服务端来了一个新模型、而 `models` 里没有它时，插件不猜 provider、不猜价格，直接跳过并在控制台报一次原因。
+查价只在映射指定的 provider 下做精确匹配（外加大小写不敏感），不会前缀或包含匹配——
+models.dev 里有一堆 `-free` 零价条目，模糊匹配会把它们当成付费模型。
 
 ## 开发
 
 ```bash
 bun install
-bun test          # 182 个用例
+bun test          # 191 个用例
 bun run build     # 产出 dist/gui-experimental.cjs
 ```
 
