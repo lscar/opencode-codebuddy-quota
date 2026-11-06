@@ -1,0 +1,43 @@
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Tag to release, e.g. v0.1.0
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - run: bun install --frozen-lockfile
+
+      # The same gate a local commit has to pass: types and tests.
+      - run: bun run check
+
+      - run: bun run build:gui
+
+      # A git install pulls the source only, so the built GUI ships here.
+      - name: Publish the release
+        env:
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          gh release create "$TAG" \
+            dist/gui-experimental.cjs \
+            --title "$TAG" \
+            --generate-notes \
+            --verify-tag
