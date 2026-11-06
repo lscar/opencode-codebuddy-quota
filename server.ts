@@ -1,4 +1,4 @@
-import { copyFileSync, existsSync } from "node:fs"
+import { existsSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { Plugin } from "@opencode/plugin"
 import { CodebuddyQuota } from "./rpc"
@@ -8,6 +8,7 @@ import { writeModels } from "./src/server/config-writer"
 import { createDedupedLogger } from "./src/server/logger"
 import { buildModels } from "./src/server/model-info"
 import { readModelsDevCatalog } from "./src/server/models-dev"
+import { latestTaggedVersion } from "./src/server/package-version"
 import { createQuotaSource } from "./src/server/quota-source"
 import { fetchUpstream, readApiKey } from "./src/server/upstream"
 import { toWireReading } from "./src/server/wire"
@@ -70,20 +71,45 @@ export default Plugin.define({
      */
     if (readApiKey().trim()) {
       try {
+        const config = loadConfig()
         const models = buildModels({
           catalog: await fetchCatalog({ key: readApiKey() }),
-          config: loadConfig(),
+          config,
           modelsDev: readModelsDevCatalog(),
           log,
         })
 
+        // OpenCode caches the first version it resolved, keyed by name@version,
+        // so a package spec left without a version never moves. Ask npm for the
+        // newest build on the tag OpenCode uses; fall back to the shipped pin
+        // when the registry cannot be reached, so an offline start still writes
+        // a version rather than a spec that resolves differently each time.
+        const latest = await latestTaggedVersion()
+        const packageVersion = latest ?? config.package_version
+
         const target = opencodeConfigPath()
+        // An empty catalog means the endpoint answered with nothing usable;
+        // overwriting the user's models with that would be worse than skipping.
         if (models.length > 0 && existsSync(target)) {
-          // A plugin editing the user's config must leave a way back.
-          copyFileSync(target, `${target}.codebuddy-quota.bak`)
-          const result = writeModels({ jsoncPath: target, models })
-          if (result.written) log(`imported ${models.length} models into ${target}; restart to pick them up`)
-          else log(`left ${target} untouched: ${result.reason}`)
+          const result = writeModels({
+            jsoncPath: target,
+            models,
+            packageVersion,
+            // Only a real change earns a backup, and the first one is kept: a
+            // later run must not bury the pre-plugin original.
+            backup: (path, content) => {
+              const backupPath = `${path}.codebuddy-quota.bak`
+              if (!existsSync(backupPath)) writeFileSync(backupPath, content, "utf8")
+            },
+          })
+          if (!result.written) {
+            log(`left ${target} untouched: ${result.reason}`)
+          } else if (result.changed) {
+            const source = latest ? "npm" : "configured fallback"
+            log(
+              `wrote ${models.length} models, package ${packageVersion} (${source}) into ${target}; restart to pick them up`,
+            )
+          }
         }
       } catch (error) {
         log(`model import failed: ${String((error as Error)?.message ?? error)}`)

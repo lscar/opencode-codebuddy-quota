@@ -16,6 +16,13 @@ export interface QuotaConfig {
   models: Record<string, ModelMapping>
   /** Hard block, applied on top of `models`: listed ids are dropped even when mapped. */
   excluded_models: string[]
+  /**
+   * The `@ai-sdk/openai-compatible` version to write when the npm lookup fails
+   * or is unavailable. Ships as "the version this plugin was tested against", so
+   * an offline start still produces a working config rather than a bare spec
+   * OpenCode would resolve unpredictably.
+   */
+  package_version: string
 }
 
 /**
@@ -41,6 +48,7 @@ export const DEFAULT_CONFIG: QuotaConfig = {
     "space-bunny": { provider: "minimax-cn", model: "MiniMax-M3.1-Flash" },
   },
   excluded_models: ["space-bunny", "hy3", "hy3-x"],
+  package_version: "2.0.90",
 }
 
 export const CONFIG_FILE_NAME = "codebuddy-quota.json"
@@ -108,9 +116,14 @@ export function loadConfig(deps: LoadConfigDeps = {}): QuotaConfig {
 
   const models = modelMap(parsed.models)
   const excluded = stringList(parsed.excluded_models)
+  const packageVersion =
+    typeof parsed.package_version === "string" && parsed.package_version.trim().length > 0
+      ? parsed.package_version.trim()
+      : undefined
 
   return {
     models: models ? { ...DEFAULT_CONFIG.models, ...models } : DEFAULT_CONFIG.models,
     excluded_models: excluded ?? DEFAULT_CONFIG.excluded_models,
+    package_version: packageVersion ?? DEFAULT_CONFIG.package_version,
   }
 }

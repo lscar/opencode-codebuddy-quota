@@ -13,9 +13,23 @@ export const PROVIDER_ID = "codebuddy"
 export const CLIENT_NAME = "deepseekharness"
 
 /**
+ * The `@ai-sdk/openai-compatible` version this build was tested against. The
+ * fallback when npm cannot be reached; `config.default.json` carries the same
+ * value as `package_version`, and a test keeps the two equal.
+ */
+export const DEFAULT_PACKAGE_VERSION = "2.0.90"
+
+/** `aisdk:`-prefixed spec for the given version. OpenCode strips the prefix. */
+export function packageSpec(version: string): string {
+  return `aisdk:@ai-sdk/openai-compatible@${version}`
+}
+
+/**
+ * The provider block written when the user has no `codebuddy` provider yet.
+ *
  * The `aisdk:` prefix is stripped by OpenCode, which then resolves the rest as
- * an npm specifier and caches it. Pin the version so a resolution change cannot
- * silently alter how requests are built.
+ * an npm specifier and caches it under `<name>@<version>`. Pinning the version
+ * is what makes an upgrade take effect: a cached version is never re-checked.
  *
  * `apiKey` stays a `{env:...}` literal on purpose: OpenCode resolves it, so the
  * plugin never reads or holds the secret itself.
@@ -23,7 +37,7 @@ export const CLIENT_NAME = "deepseekharness"
 export const PROVIDER_DEFAULT = {
   id: PROVIDER_ID,
   name: "CodeBuddy",
-  package: "aisdk:@ai-sdk/openai-compatible@2.0.90",
+  package: packageSpec(DEFAULT_PACKAGE_VERSION),
   activation: "enabled",
   settings: {
     baseURL: "https://copilot.tencent.com/v2",

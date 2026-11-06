@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { DEFAULT_CONFIG, loadConfig } from "./config"
+import { DEFAULT_PACKAGE_VERSION } from "./provider-default"
 
 describe("loadConfig", () => {
   it("returns defaults when the file is missing", () => {
@@ -53,6 +54,21 @@ describe("loadConfig", () => {
     expect(c.excluded_models).toEqual(DEFAULT_CONFIG.excluded_models)
   })
 
+  it("reads package_version, falling back to the shipped pin", () => {
+    expect(loadConfig({ readFile: () => { throw new Error("ENOENT") } }).package_version).toBe(
+      DEFAULT_CONFIG.package_version,
+    )
+    const c = loadConfig({ readFile: () => JSON.stringify({ package_version: "2.1.7" }) })
+    expect(c.package_version).toBe("2.1.7")
+  })
+
+  it("ignores a blank or non-string package_version", () => {
+    for (const bad of ["", "   ", 42, null]) {
+      const c = loadConfig({ readFile: () => JSON.stringify({ package_version: bad }) })
+      expect(c.package_version).toBe(DEFAULT_CONFIG.package_version)
+    }
+  })
+
   it("replaces excluded_models wholesale rather than concatenating", () => {
     const c = loadConfig({ readFile: () => JSON.stringify({ excluded_models: ["hy3"] }) })
     expect(c.excluded_models).toEqual(["hy3"])
@@ -79,5 +95,9 @@ describe("loadConfig", () => {
   it("keeps config.default.json in sync with the runtime constant", () => {
     const raw = readFileSync(join(import.meta.dir, "..", "..", "config.default.json"), "utf8")
     expect(JSON.parse(raw)).toEqual(DEFAULT_CONFIG)
+  })
+
+  it("keeps the fallback version equal to the provider's shipped pin", () => {
+    expect(DEFAULT_CONFIG.package_version).toBe(DEFAULT_PACKAGE_VERSION)
   })
 })

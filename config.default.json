@@ -13,5 +13,6 @@
     "hy3-x": { "provider": "tencent-tokenhub", "model": "hy3" },
     "space-bunny": { "provider": "minimax-cn", "model": "MiniMax-M3.1-Flash" }
   },
-  "excluded_models": ["space-bunny", "hy3", "hy3-x"]
+  "excluded_models": ["space-bunny", "hy3", "hy3-x"],
+  "package_version": "2.0.90"
 }

@@ -117,11 +117,74 @@ describe("writeModels", () => {
     expect(m.settings).toBeUndefined()
   })
 
-  it("is a no-op when the file already lists exactly these ids", () => {
+  it("is a no-op when the rendered block already matches", () => {
     const once = run([model("a"), model("b")])
+    expect(once.result.changed).toBe(true)
     const twice = run([model("a"), model("b")], once.written)
     expect(twice.result.written).toBe(true)
+    expect(twice.result.changed).toBe(false)
     expect(twice.written).toBe("")
+  })
+
+  it("rewrites when a price changes but the model ids do not", () => {
+    const before = run([model("g")]).written
+    const after = run([model("g", { cost: [{ input: 9, output: 9, cache: { read: 9, write: 0 } }] })], before)
+    expect(after.result.changed).toBe(true)
+    expect(JSON.parse(after.written).providers.codebuddy.models.g.cost.input).toBe(9)
+  })
+
+  it("rewrites when the reasoning levels change but the model ids do not", () => {
+    const before = run([model("g")]).written
+    const after = run([model("g", { efforts: ["low", "high", "max"] })], before)
+    expect(after.result.changed).toBe(true)
+    expect(JSON.parse(after.written).providers.codebuddy.models.g.variants).toHaveLength(3)
+  })
+
+  it("moves the provider package to a newer version", () => {
+    let written = ""
+    const result = writeModels({
+      jsoncPath: "opencode.jsonc",
+      models: [model("g")],
+      packageVersion: "2.0.91",
+      readFile: () => CONFIG,
+      writeFile: (_p, c) => {
+        written = c
+      },
+    })
+    expect(result.changed).toBe(true)
+    expect(written).toContain('"package": "aisdk:@ai-sdk/openai-compatible@2.0.91"')
+  })
+
+  it("does not touch the package when the version already matches", () => {
+    const same = CONFIG.replace(
+      "@ai-sdk/openai-compatible@2.0.90",
+      "@ai-sdk/openai-compatible@2.0.91",
+    )
+    const once = run([model("g")], same)
+    expect(once.written).toContain("@2.0.91")
+    expect(once.written).not.toContain("@2.0.90")
+  })
+
+  it("calls backup with the original text only when the content changes", () => {
+    const backups: string[] = []
+    const original = run([model("g")]).written
+    writeModels({
+      jsoncPath: "opencode.jsonc",
+      models: [model("g")],
+      readFile: () => original,
+      writeFile: () => {},
+      backup: (_p, content) => backups.push(content),
+    })
+    expect(backups).toHaveLength(0)
+
+    writeModels({
+      jsoncPath: "opencode.jsonc",
+      models: [model("g"), model("h")],
+      readFile: () => original,
+      writeFile: () => {},
+      backup: (_p, content) => backups.push(content),
+    })
+    expect(backups).toEqual([original])
   })
 
   it("keeps comments that sit outside the model block", () => {

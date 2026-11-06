@@ -1,5 +1,6 @@
 import { readFileSync, writeFileSync } from "node:fs"
 import type { ImportedModel } from "./model-info"
+import { withVersion } from "./package-version"
 import { PROVIDER_ID } from "./provider-default"
 
 /**
@@ -19,14 +20,20 @@ import { PROVIDER_ID } from "./provider-default"
 export interface WriteModelsDeps {
   jsoncPath: string
   models: readonly ImportedModel[]
+  /** When set, the provider's `package` version is moved to this value. */
+  packageVersion?: string | null
   readFile?: (path: string) => string
   writeFile?: (path: string, content: string) => void
+  /** Called with the original text right before it is replaced. */
+  backup?: (path: string, content: string) => void
 }
 
 export interface WriteModelsResult {
   written: boolean
   /** Why nothing was written; absent when `written` is true. */
   reason?: string
+  /** True when the text handed to `writeFile` differs from the text read. */
+  changed?: boolean
 }
 
 /** Strips `//` and leading-`*` comments plus trailing commas, so `JSON.parse` can read the text. */
@@ -143,7 +150,14 @@ function indentOf(text: string, at: number): string {
 }
 
 /**
- * Rewrites `providers.codebuddy.models` in place, or creates it when absent.
+ * Brings `providers.codebuddy` in line with what the plugin computed: the
+ * `models` block is replaced, and the provider `package` version is moved
+ * forward when a newer one was found.
+ *
+ * The whole block is compared by content, not just by the set of model ids, so
+ * a price or reasoning-level change from models.dev also lands. Nothing is
+ * written when the rendered text already matches what is on disk.
+ *
  * Returns `written: false` on any malformed input rather than risk corrupting
  * the user's configuration.
  */
@@ -165,20 +179,13 @@ export function writeModels(deps: WriteModelsDeps): WriteModelsResult {
     return { written: false, reason: "config file is not valid JSON/JSONC" }
   }
 
-  const modelsById: Record<string, unknown> = {}
-  for (const model of deps.models) modelsById[model.id] = toConfigModel(model)
-
   const root = existing as Record<string, unknown>
   if (typeof root !== "object" || root === null || Array.isArray(root)) {
     return { written: false, reason: "config root is not an object" }
   }
 
-  // Nothing to do when the user's file already lists exactly these models.
-  const providers = root.providers as Record<string, any> | undefined
-  const current = providers?.[PROVIDER_ID]?.models as Record<string, unknown> | undefined
-  if (current && sameModelIds(current, modelsById)) {
-    return { written: true }
-  }
+  const modelsById: Record<string, unknown> = {}
+  for (const model of deps.models) modelsById[model.id] = toConfigModel(model)
 
   const modelsRange = locateModelsBlock(original)
   if (!modelsRange) {
@@ -190,16 +197,37 @@ export function writeModels(deps: WriteModelsDeps): WriteModelsResult {
     .map(([id, value]) => `${indent}${JSON.stringify(id)}: ${compactJson(value)}`)
     .join(",\n")
   const body = members ? `\n${members}\n${indentOf(original, modelsRange.open)}` : ""
-  const next = `${original.slice(0, modelsRange.open + 1)}${body}${original.slice(modelsRange.close)}`
+  let next = `${original.slice(0, modelsRange.open + 1)}${body}${original.slice(modelsRange.close)}`
 
+  if (deps.packageVersion) {
+    next = retargetPackage(next, deps.packageVersion)
+  }
+
+  if (next === original) return { written: true, changed: false }
+
+  deps.backup?.(deps.jsoncPath, original)
   write(deps.jsoncPath, next)
-  return { written: true }
+  return { written: true, changed: true }
 }
 
-function sameModelIds(a: Record<string, unknown>, b: Record<string, unknown>): boolean {
-  const ak = Object.keys(a).sort()
-  const bk = Object.keys(b).sort()
-  return ak.length === bk.length && ak.every((k, i) => k === bk[i])
+/**
+ * Retargets the `package` inside `providers.codebuddy` to `version`, leaving a
+ * spec that is not one of our known `@ai-sdk/*` packages untouched.
+ */
+function retargetPackage(text: string, version: string): string {
+  const bare = stripComments(text)
+  const providerAt = bare.indexOf(`"${PROVIDER_ID}"`)
+  if (providerAt < 0) return text
+
+  const after = bare.slice(providerAt)
+  const match = /"package"\s*:\s*"([^"]*)"/.exec(after)
+  if (!match) return text
+
+  const replacement = withVersion(match[1], version)
+  if (!replacement || replacement === match[1]) return text
+
+  const start = providerAt + match.index
+  return `${text.slice(0, start)}${JSON.stringify("package")}: ${JSON.stringify(replacement)}${text.slice(start + match[0].length)}`
 }
 
 /**
