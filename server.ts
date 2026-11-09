@@ -1,9 +1,8 @@
 import { existsSync, writeFileSync } from "node:fs"
-import { join } from "node:path"
 import { Plugin } from "@opencode/plugin"
 import { CodebuddyQuota } from "./rpc"
 import { fetchCatalog } from "./src/server/catalog"
-import { configDir, loadConfig } from "./src/server/config"
+import { loadConfig, opencodeConfigPath } from "./src/server/config"
 import { writeModels } from "./src/server/config-writer"
 import { createDedupedLogger } from "./src/server/logger"
 import { buildModels } from "./src/server/model-info"
@@ -14,11 +13,6 @@ import { fetchUpstream, readApiKey } from "./src/server/upstream"
 import { toWireReading } from "./src/server/wire"
 
 const UPSTREAM_TIMEOUT_MS = 15_000
-
-/** `~/.config/opencode/opencode.jsonc`, beside `codebuddy-quota.json`. */
-function opencodeConfigPath(): string {
-  return join(configDir(), "opencode.jsonc")
-}
 
 /** AbortSignal.any is not guaranteed in every runtime OpenCode embeds. */
 function anySignal(signals: AbortSignal[]): AbortSignal {

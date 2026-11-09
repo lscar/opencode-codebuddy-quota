@@ -22,7 +22,7 @@ Desktop 窗口
 
 ## 安装
 
-前置：本机有 `bun` 和 `git`。在 `~/.config/opencode/opencode.jsonc` 的 `plugins` 里按 tag 引用：
+前置：本机有 `bun` 和 `git`。在 OpenCode 的全局配置文件里加上本插件，按 tag 引用：
 
 ```jsonc
 {
@@ -31,6 +31,9 @@ Desktop 窗口
   ]
 }
 ```
+
+全局配置是 `~/.config/opencode/opencode.jsonc` **或** `~/.config/opencode/opencode.json`，
+两个都支持，插件会自动写清你实际在用的那一个。
 
 设置 API Key，然后重启服务：
 
@@ -47,14 +50,14 @@ opencode service restart
 [Releases](https://github.com/lscar/opencode-codebuddy-quota/releases) 下载
 `gui-experimental.cjs` 放到 `dist/` 下。只做 server 侧的额度取数不需要这一步。
 
-本地开发时也可以直接引用目录的绝对路径：
+## 开发
 
-```jsonc
-{ "plugins": ["D:\\code\\opencode-codebuddy-quota"] }
-```
+在工作副本里改代码时，`plugins` 直接写**你自己那台机器上**克隆目录的绝对路径即可，
+例如 `{ "plugins": ["/home/you/code/opencode-codebuddy-quota"] }`（Windows 上用 `D:\\...` 这种形式）。
+换机器就换成那台机器上的路径，不要把某台机器的路径抄进配置。
 
-之后改 `src/gui/**` 用 `bun run build:gui`（窗口热重载），
-改 `server.ts` / `src/server/**` 再重启一次服务——server 侧直接跑 TypeScript，没有构建步骤。
+改 `src/gui/**` 后用 `bun run build:gui`（窗口热重载），
+改 `server.ts` / `src/server/**` 后重启一次服务——server 侧直接跑 TypeScript，没有构建步骤。
 
 ## 凭据
 

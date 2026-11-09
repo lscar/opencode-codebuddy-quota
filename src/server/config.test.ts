@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
-import { DEFAULT_CONFIG, loadConfig } from "./config"
+import { configDir, configPath, DEFAULT_CONFIG, loadConfig, opencodeConfigPath } from "./config"
 import { DEFAULT_PACKAGE_VERSION } from "./package-spec"
 
 describe("loadConfig", () => {
@@ -100,5 +100,39 @@ describe("loadConfig", () => {
 
   it("keeps the fallback version equal to the provider's shipped pin", () => {
     expect(DEFAULT_CONFIG.package_version).toBe(DEFAULT_PACKAGE_VERSION)
+  })
+})
+
+describe("configDir", () => {
+  it("defaults to ~/.config/opencode", () => {
+    expect(configDir({}, "/home/u")).toBe(join("/home/u", ".config", "opencode"))
+  })
+
+  it("honours XDG_CONFIG_HOME", () => {
+    expect(configDir({ XDG_CONFIG_HOME: "/xdg" }, "/home/u")).toBe(join("/xdg", "opencode"))
+  })
+
+  it("puts the plugin config beside it", () => {
+    expect(configPath("/home/u")).toBe(join("/home/u", ".config", "opencode", "codebuddy-quota.json"))
+  })
+})
+
+describe("opencodeConfigPath", () => {
+  const existsIn = (...present: string[]) => (path: string) =>
+    present.some((name) => path.endsWith(name))
+
+  // OpenCode reads opencode.jsonc or opencode.json, whichever exists. Aiming at
+  // a fixed .jsonc would leave the .json user with a silently empty import.
+  it("finds opencode.json when that is the file the user has", () => {
+    expect(opencodeConfigPath("/cfg", existsIn("opencode.json"))).toBe(join("/cfg", "opencode.json"))
+  })
+
+  it("prefers opencode.jsonc when both exist", () => {
+    const path = opencodeConfigPath("/cfg", existsIn("opencode.jsonc", "opencode.json"))
+    expect(path).toBe(join("/cfg", "opencode.jsonc"))
+  })
+
+  it("falls back to opencode.jsonc when neither exists", () => {
+    expect(opencodeConfigPath("/cfg", () => false)).toBe(join("/cfg", "opencode.jsonc"))
   })
 })

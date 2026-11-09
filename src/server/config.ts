@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs"
+import { existsSync, readFileSync } from "node:fs"
 import { homedir } from "node:os"
 import { join } from "node:path"
 import { DEFAULT_PACKAGE_VERSION, isVersion } from "./package-spec"
@@ -54,14 +54,44 @@ export const DEFAULT_CONFIG: QuotaConfig = {
 
 export const CONFIG_FILE_NAME = "codebuddy-quota.json"
 
-/** `~/.config/opencode`, where both this config and `opencode.jsonc` live. */
-export function configDir(home: string = homedir()): string {
+/** `$XDG_CONFIG_HOME/opencode`, or `~/.config/opencode` when it is unset. */
+export function configDir(
+  env: Record<string, string | undefined> = process.env,
+  home: string = homedir(),
+): string {
+  const xdg = env.XDG_CONFIG_HOME
+  if (xdg) return join(xdg, "opencode")
   return join(home, ".config", "opencode")
 }
 
-/** `~/.config/opencode/codebuddy-quota.json`, beside the user's `opencode.jsonc`. */
+/** `~/.config/opencode/codebuddy-quota.json`, beside the user's `opencode.json(c)`. */
 export function configPath(home: string = homedir()): string {
-  return join(configDir(home), CONFIG_FILE_NAME)
+  return join(configDir(undefined, home), CONFIG_FILE_NAME)
+}
+
+/**
+ * The names OpenCode accepts for a config file, in the order it prefers them.
+ * Both parse; JSONC is the one with comments.
+ */
+export const OPENCODE_CONFIG_NAMES = ["opencode.jsonc", "opencode.json"] as const
+
+/**
+ * The OpenCode config this plugin should edit.
+ *
+ * OpenCode reads `opencode.jsonc` or `opencode.json`, whichever exists — a user
+ * who picked `.json` must not be left with a plugin that silently imports
+ * nothing. The first name that exists wins; with neither present the returned
+ * path ends in `.jsonc`, matching what OpenCode writes for a fresh config.
+ */
+export function opencodeConfigPath(
+  dir: string = configDir(),
+  exists: (path: string) => boolean = existsSync,
+): string {
+  for (const name of OPENCODE_CONFIG_NAMES) {
+    const candidate = join(dir, name)
+    if (exists(candidate)) return candidate
+  }
+  return join(dir, OPENCODE_CONFIG_NAMES[0])
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
