@@ -113,7 +113,7 @@ describe("configDir", () => {
   })
 
   it("puts the plugin config beside it", () => {
-    expect(configPath("/home/u")).toBe(join("/home/u", ".config", "opencode", "codebuddy-quota.json"))
+    expect(configPath("/home/u")).toBe(join(configDir(undefined, "/home/u"), "codebuddy-quota.json"))
   })
 })
 
