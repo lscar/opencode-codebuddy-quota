@@ -1,24 +1,28 @@
 import { existsSync, writeFileSync } from "node:fs"
 import { Plugin } from "@opencode/plugin"
 import { CodebuddyQuota } from "./rpc"
+import type { Site } from "./src/shared"
 import { fetchCatalog } from "./src/server/catalog"
 import { loadConfig, opencodeConfigPath } from "./src/server/config"
-import { writeModels } from "./src/server/config-writer"
+import { writeProvider } from "./src/server/config-writer"
 import { createDedupedLogger } from "./src/server/logger"
+import { getAuthState, openBrowser, pollToken } from "./src/server/login"
 import { buildModels } from "./src/server/model-info"
 import { readModelsDevCatalog } from "./src/server/models-dev"
 import { latestTaggedVersion } from "./src/server/package-version"
+import { createProxy } from "./src/server/proxy"
 import { createQuotaSource } from "./src/server/quota-source"
-import { fetchUpstream, readApiKey } from "./src/server/upstream"
+import { currentSite, siteInfo } from "./src/server/site-state"
+import { createTokenStore } from "./src/server/token-store"
+import { fetchUpstream } from "./src/server/upstream"
 import { toWireReading } from "./src/server/wire"
 
+const PROXY_PORT = 7688
 const UPSTREAM_TIMEOUT_MS = 15_000
 
 /** AbortSignal.any is not guaranteed in every runtime OpenCode embeds. */
 function anySignal(signals: AbortSignal[]): AbortSignal {
   for (const signal of signals) {
-    // Aborting first is not an optimization: a listener added to an already
-    // aborted signal never fires, so the merged signal would ignore it.
     if (signal.aborted) return AbortSignal.abort(signal.reason)
   }
   const controller = new AbortController()
@@ -28,103 +32,113 @@ function anySignal(signals: AbortSignal[]): AbortSignal {
   return controller.signal
 }
 
-/**
- * The only part of this plugin that talks to the upstream. The GUI windows call
- * `read` over the plugin RPC, so the credential never enters a window process
- * and nothing has to listen on a port.
- */
 export default Plugin.define({
-  id: "codebuddy-quota",
+  id: "codebuddy-quota-v2",
   async setup(ctx) {
-    const log = createDedupedLogger((line) => console.warn(line), "[codebuddy-quota]")
+    const log = createDedupedLogger((line) => console.warn(line), "[codebuddy-quota-v2]")
+
+    // Restore both sites' credentials from the plugin-owned cache; no CLI auth
+    // file is read, and no token ever reaches the GUI.
+    const store = createTokenStore()
 
     const source = createQuotaSource({
-      fetchUpstream: (signal) => {
+      readForSite: (site, signal) => {
         const timeout = AbortSignal.timeout(UPSTREAM_TIMEOUT_MS)
-        // Read the key per call, so a fixed environment takes effect on restart
-        // rather than being frozen at plugin load.
-        return fetchUpstream({
-          key: readApiKey(),
-          signal: signal ? anySignal([signal, timeout]) : timeout,
-        })
+        return store
+          .ensureFresh(site)
+          .then((auth) =>
+            fetchUpstream({ auth, signal: signal ? anySignal([signal, timeout]) : timeout }),
+          )
       },
     })
 
-    /**
-     * Model import happens once, at plugin load, and writes into the user's
-     * `opencode.jsonc` rather than mutating providers at runtime.
-     *
-     * `ctx.provider.transform` looks like the right hook, but in OpenCode 2.2.5
-     * the provider records it hands out are already frozen: `add()`,
-     * `models.set()` and `update()` all throw "Attempted to assign to readonly
-     * property", and a transform that throws is silently discarded. The config
-     * file is read *before* providers resolve, so it is the one place a plugin
-     * can add models that actually reach the picker.
-     *
-     * Nothing here is allowed to take the quota panel down with it.
-     */
-    const key = readApiKey()
-    if (key.trim()) {
-      try {
-        const config = loadConfig()
-        // TODO(v2 Task 11): replace this key-based bootstrap with per-site JWT catalog
-        // fetch. Kept type-correct here only so intermediate commits compile.
-        const stubAuth = {
-          id: "cn:stub", accessToken: key, refreshToken: "", expiresAt: 0,
-          refreshExpiresAt: 0, uid: "", enterpriseId: null, realmDomain: "",
-          endpoint: "https://copilot.tencent.com", usageHost: "https://www.codebuddy.cn",
-        }
-        const models = buildModels({
-          catalog: await fetchCatalog({ site: "cn", auth: stubAuth }),
-          config,
-          modelsDev: readModelsDevCatalog(),
-          log,
-        })
-
-        // OpenCode caches the first version it resolved, keyed by name@version,
-        // so a package spec left without a version never moves. Ask npm for the
-        // newest build on the tag OpenCode uses; fall back to the shipped pin
-        // when the registry cannot be reached, so an offline start still writes
-        // a version rather than a spec that resolves differently each time.
-        const latest = await latestTaggedVersion()
-        const packageVersion = latest ?? config.package_version
-
-        const target = opencodeConfigPath()
-        // An empty catalog means the endpoint answered with nothing usable;
-        // overwriting the user's models with that would be worse than skipping.
-        if (models.length > 0 && existsSync(target)) {
-          const result = writeModels({
-            jsoncPath: target,
-            models,
-            packageVersion,
-            // Only a real change earns a backup, and the first one is kept: a
-            // later run must not bury the pre-plugin original.
-            backup: (path, content) => {
-              const backupPath = `${path}.codebuddy-quota.bak`
-              if (!existsSync(backupPath)) writeFileSync(backupPath, content, "utf8")
-            },
-          })
-          if (result.status === "skipped") {
-            log(`left ${target} untouched: ${result.reason}`)
-          } else if (result.status === "written") {
-            const source = latest ? "npm" : "configured fallback"
-            const pkg = result.packageUpdated
-              ? `package ${packageVersion} (${source})`
-              : `package left as it was${result.packageWarning ? ` (${result.packageWarning})` : ""}`
-            log(`wrote ${models.length} models, ${pkg} into ${target}; restart to pick them up`)
-          }
-        }
-      } catch (error) {
-        log(`model import failed: ${String((error as Error)?.message ?? error)}`)
-      }
+    // Local reverse proxy: providers point here; the proxy injects the current
+    // site's JWT on each request. Port conflicts are logged and non-fatal to the
+    // rest of the panel.
+    const proxy = createProxy({ store })
+    try {
+      await proxy.start(PROXY_PORT)
+      log(`local proxy listening on 127.0.0.1:${PROXY_PORT}`)
+    } catch (error) {
+      log(`local proxy could not bind ${PROXY_PORT}: ${String((error as Error)?.message ?? error)}`)
     }
 
+    /**
+     * Model import: for every site that has an account, fetch its cli-whitelist
+     * catalog with that site's JWT and write a dedicated provider block. The
+     * legacy `codebuddy` provider is never touched.
+     */
+    const importModels = async () => {
+      const config = loadConfig()
+      const modelsDev = readModelsDevCatalog()
+      const latest = await latestTaggedVersion()
+      const packageVersion = latest ?? config.package_version
+      const target = opencodeConfigPath()
+      for (const site of ["cn", "intl"] as Site[]) {
+        const auth = store.get(site)
+        if (!auth) {
+          log(`no ${site} account; skipping its model import`)
+          continue
+        }
+        try {
+          const catalog = await fetchCatalog({ site, auth })
+          const models = buildModels({ catalog, config, modelsDev, log })
+          if (models.length === 0) {
+            log(`${site} catalog produced no models; skipping write`)
+            continue
+          }
+          const result = writeProvider({
+            jsoncPath: target,
+            providerId: site === "cn" ? "codebuddy-cn" : "codebuddy-intl",
+            models,
+            packageVersion,
+            proxyPort: PROXY_PORT,
+            backup: (path, content) => {
+              const backupPath = `${path}.codebuddy-quota-v2.bak`
+              try {
+                // Only the first backup is kept, so the pre-plugin original survives.
+                if (!existsSync(backupPath)) writeFileSync(backupPath, content, "utf8")
+              } catch {
+                // Backup is best-effort; never block the provider write.
+              }
+            },
+          })
+          if (result.status === "skipped") log(`${site} provider write skipped: ${result.reason}`)
+        } catch (error) {
+          log(`${site} model import failed: ${String((error as Error)?.message ?? error)}`)
+        }
+      }
+    }
+    void importModels()
+
     const registration = await ctx.rpc.register(CodebuddyQuota, {
-      // `context.signal` fires when the caller goes away (a window closed), which
-      // is why it is threaded through rather than dropped.
-      read: async (_input, context) => toWireReading(await source.read(context.signal)),
+      read: async (input, context) => {
+        const state = store.all()
+        const requested = (input as { site?: Site } | undefined)?.site
+        const site = requested ?? currentSite(state)
+        const reading = await source.read(site, context.signal)
+        return toWireReading(reading, { site, sites: siteInfo(state).sites })
+      },
+      login: async (input) => {
+        const site = (input as { site: Site }).site
+        try {
+          const { state, authUrl } = await getAuthState(site)
+          openBrowser(authUrl)
+          const auth = await pollToken(site, state)
+          store.archive(auth)
+          log(`${site} login complete`)
+          return { ok: true, error: null }
+        } catch (error) {
+          const message = String((error as Error)?.message ?? error)
+          log(`${site} login failed: ${message}`)
+          return { ok: false, error: message }
+        }
+      },
     })
 
-    return () => registration.dispose()
+    return () => {
+      registration.dispose()
+      void proxy.close()
+    }
   },
 })
