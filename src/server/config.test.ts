@@ -105,6 +105,23 @@ describe("loadConfig", () => {
     }
   })
 
+  it("maps GPT ids that zerogpu does not carry to openai with exact ids", () => {
+    // zerogpu only has gpt-5.6-luna; these four must use openai or they get no price.
+    for (const id of ["gpt-6-sol", "gpt-6-luna", "gpt-5.6-sol", "gpt-5.6-terra"]) {
+      expect(DEFAULT_CONFIG.models[id].provider).toBe("openai")
+      expect(DEFAULT_CONFIG.models[id].model).toBe(id)
+    }
+    expect(DEFAULT_CONFIG.models["gpt-5.6-luna"].provider).toBe("zerogpu")
+  })
+
+  it("uses exact capitalised wafer.ai ids and moonshotai for kimi highspeed", () => {
+    expect(DEFAULT_CONFIG.models["kimi-k3.1-pro"]).toEqual({ provider: "wafer.ai", model: "Kimi-K3.1-Pro" })
+    expect(DEFAULT_CONFIG.models["kimi-k3"]).toEqual({ provider: "wafer.ai", model: "Kimi-K3" })
+    expect(DEFAULT_CONFIG.models["kimi-k3.1-pro-highspeed"]).toEqual({
+      provider: "moonshotai", model: "kimi-k3.1-pro-highspeed",
+    })
+  })
+
   it("keeps config.default.json in sync with the runtime constant", () => {
     const raw = readFileSync(join(import.meta.dir, "..", "..", "config.default.json"), "utf8")
     expect(JSON.parse(raw)).toEqual(DEFAULT_CONFIG)
