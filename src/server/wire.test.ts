@@ -12,8 +12,18 @@ describe("toWireReading", () => {
     fetchedAt: "2026-11-05T00:00:00.000Z",
   }
 
+  const info = {
+    site: "cn" as const,
+    sites: [
+      { site: "cn" as const, available: true, accounts: [{ id: "cn:u1", label: "u1" }], activeId: "cn:u1" },
+      { site: "intl" as const, available: false, accounts: [], activeId: null },
+    ],
+  }
+
   it("reports a fresh upstream answer as ok and not cached", () => {
-    const wire = toWireReading({ ...numbers, stale: false, error: null, cached: false, ageSeconds: 0 })
+    const wire = toWireReading({ ...numbers, stale: false, error: null, cached: false, ageSeconds: 0 }, info)
+    expect(wire.site).toBe("cn")
+    expect(wire.sites).toEqual(info.sites)
     expect(wire.ok).toBe(true)
     expect(wire.stale).toBe(false)
     expect(wire.cached).toBe(false)
@@ -22,7 +32,7 @@ describe("toWireReading", () => {
   })
 
   it("says so when the answer came from the cache rather than the upstream", () => {
-    const wire = toWireReading({ ...numbers, stale: false, error: null, cached: true, ageSeconds: 12 })
+    const wire = toWireReading({ ...numbers, stale: false, error: null, cached: true, ageSeconds: 12 }, info)
     expect(wire.ok).toBe(true)
     expect(wire.cached).toBe(true)
     expect(wire.ageSeconds).toBe(12)
@@ -35,7 +45,7 @@ describe("toWireReading", () => {
       error: "upstream HTTP 500",
       cached: false,
       ageSeconds: 40,
-    })
+    }, info)
     expect(wire.ok).toBe(true)
     expect(wire.stale).toBe(true)
     expect(wire.cached).toBe(false)
@@ -56,7 +66,7 @@ describe("toWireReading", () => {
       error: "OPENCODE_CODEBUDDY_API_KEY is not set",
       cached: false,
       ageSeconds: null,
-    })
+    }, info)
     expect(wire.ok).toBe(false)
     expect(wire.stale).toBe(true)
     expect(wire.cached).toBe(false)

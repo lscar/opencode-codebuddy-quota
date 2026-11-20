@@ -1,3 +1,4 @@
+import type { SiteInfo } from "../shared"
 import type { Reading } from "./quota-source"
 
 /** The object the RPC returns; the fields mirror `rpc.ts`'s output schema. */
@@ -16,6 +17,8 @@ export interface WireReading {
   resetAt: string | null
   fetchedAt: string | null
   error: string | null
+  site: "cn" | "intl"
+  sites: SiteInfo[]
 }
 
 /**
@@ -25,7 +28,10 @@ export interface WireReading {
  * succeeded says `ok: false`, which the GUI treats as unavailable rather than
  * as a stale number.
  */
-export function toWireReading(reading: Reading): WireReading {
+export function toWireReading(
+  reading: Reading,
+  info: { site: "cn" | "intl"; sites: SiteInfo[] },
+): WireReading {
   const numbers = {
     remaining: reading.remaining,
     used: reading.used,
@@ -50,7 +56,12 @@ export function toWireReading(reading: Reading): WireReading {
       cycleEnd: null,
       resetAt: null,
       fetchedAt: null,
+      site: info.site,
+      sites: info.sites,
     }
   }
-  return { ok: true, stale: reading.stale, cached: reading.cached, ageSeconds: reading.ageSeconds, ...numbers }
+  return {
+    ok: true, stale: reading.stale, cached: reading.cached, ageSeconds: reading.ageSeconds,
+    ...numbers, site: info.site, sites: info.sites,
+  }
 }

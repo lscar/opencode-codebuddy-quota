@@ -15,11 +15,36 @@ import { Rpc } from "@opencode/plugin/rpc"
 const nullableString = { type: ["string", "null"] } as const
 const nullableNumber = { type: ["number", "null"] } as const
 
+const siteEnum = { type: "string", enum: ["cn", "intl"] } as const
+const siteInfoSchema = {
+  type: "object",
+  properties: {
+    site: siteEnum,
+    available: { type: "boolean" },
+    accounts: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: { id: { type: "string" }, label: { type: "string" } },
+        required: ["id", "label"],
+        additionalProperties: false,
+      },
+    },
+    activeId: nullableString,
+  },
+  required: ["site", "available", "accounts", "activeId"],
+  additionalProperties: false,
+} as const
+
 export const CodebuddyQuota = Rpc.define({
-  id: "codebuddy-quota",
+  id: "codebuddy-quota-v2",
   methods: {
     read: {
-      input: { type: "object", properties: {}, additionalProperties: false },
+      input: {
+        type: "object",
+        properties: { site: siteEnum },
+        additionalProperties: false,
+      },
       output: {
         type: "object",
         properties: {
@@ -40,8 +65,25 @@ export const CodebuddyQuota = Rpc.define({
           // When the upstream call that produced these numbers succeeded.
           fetchedAt: nullableString,
           error: nullableString,
+          // Which site these numbers belong to, and both sites' availability.
+          site: siteEnum,
+          sites: { type: "array", items: siteInfoSchema },
         },
-        required: ["ok", "stale", "cached"],
+        required: ["ok", "stale", "cached", "site", "sites"],
+        additionalProperties: false,
+      },
+    },
+    login: {
+      input: {
+        type: "object",
+        properties: { site: siteEnum },
+        required: ["site"],
+        additionalProperties: false,
+      },
+      output: {
+        type: "object",
+        properties: { ok: { type: "boolean" }, error: nullableString },
+        required: ["ok", "error"],
         additionalProperties: false,
       },
     },
