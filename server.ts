@@ -6,18 +6,14 @@ import { fetchCatalog } from "./src/server/catalog"
 import { loadConfig, opencodeConfigPath } from "./src/server/config"
 import { writeProvider } from "./src/server/config-writer"
 import { createDedupedLogger } from "./src/server/logger"
-import { createLoginGate } from "./src/server/login-gate"
-import { getAuthState, openBrowser, pollToken } from "./src/server/login"
 import { buildModels } from "./src/server/model-info"
 import { readModelsDevCatalog } from "./src/server/models-dev"
 import { latestTaggedVersion } from "./src/server/package-version"
 import { createProxy } from "./src/server/proxy"
 import { createQuotaSource } from "./src/server/quota-source"
-import { resolveSite } from "./src/server/site-select"
-import { siteInfo } from "./src/server/site-state"
+import { makeRpcHandlers } from "./src/server/rpc-handlers"
 import { createTokenStore } from "./src/server/token-store"
 import { fetchUpstream } from "./src/server/upstream"
-import { toWireReading } from "./src/server/wire"
 
 const PROXY_PORT = 7688
 const UPSTREAM_TIMEOUT_MS = 15_000
@@ -120,37 +116,8 @@ export default Plugin.define({
     }
     void importModels()
 
-    const loginGate = createLoginGate()
-
-    const registration = await ctx.rpc.register(CodebuddyQuota, {
-      read: async (input, context) => {
-        const requested = (input as { site?: Site } | undefined)?.site
-        const site = resolveSite(store, requested, (m) => log(m))
-        const reading = await source.read(site, context.signal)
-        // Read the cache AFTER the refresh: ensureFresh may have rotated tokens
-        // and replaced the cache object. A pre-read snapshot would render a
-        // "needs login" tag alongside freshly returned quota numbers.
-        const state = store.all()
-        return toWireReading(reading, { site, sites: siteInfo(state, (s) => store.refreshFailed(s)).sites })
-      },
-      login: async (input) => {
-        const site = (input as { site: Site }).site
-        return loginGate.run(site, async () => {
-          try {
-            const { state, authUrl } = await getAuthState(site)
-            openBrowser(authUrl)
-            const auth = await pollToken(site, state)
-            store.archive(auth)
-            log(`${site} login complete`)
-            return { ok: true, error: null }
-          } catch (error) {
-            const message = String((error as Error)?.message ?? error)
-            log(`${site} login failed: ${message}`)
-            return { ok: false, error: message }
-          }
-        })
-      },
-    })
+    const handlers = makeRpcHandlers({ store, source, log })
+    const registration = await ctx.rpc.register(CodebuddyQuota, handlers)
 
     return () => {
       registration.dispose()
