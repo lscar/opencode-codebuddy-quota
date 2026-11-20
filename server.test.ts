@@ -77,7 +77,7 @@ function fakeSource(opts: {
 
 describe("RPC handler assembly", () => {
   it("persists an explicitly requested site (B2 wiring)", async () => {
-    let selected: Site | null = null
+    let selected: Site | null = null as Site | null
     const store = fakeStore({ onSelect: (s) => { selected = s } })
     const handlers = makeRpcHandlers({ store, source: fakeSource(), log: () => {} })
     await handlers.read({ site: "intl" }, { signal: new AbortController().signal })

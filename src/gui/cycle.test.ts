@@ -1,5 +1,4 @@
 import { describe, expect, it } from "bun:test"
-import { paceLabel } from "./pace"
 import { normalizeQuota } from "./quota"
 
 const base = {

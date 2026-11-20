@@ -29,7 +29,7 @@ type ReadFile = () => string
 type WriteFile = (path: string, data: string) => void
 
 const defaultRead = (path: string): ReadFile => () => readFileSync(path, "utf8")
-const defaultWrite = (path: string): WriteFile => (p, data) => {
+const defaultWrite = (_path: string): WriteFile => (p, data) => {
   writeFileSync(p, data, { mode: 0o600 })
   // `mode` only applies on create; tighten an existing (e.g. 0644) file too.
   try { chmodSync(p, 0o600) } catch { /* no-op on platforms without POSIX modes */ }

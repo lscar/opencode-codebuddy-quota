@@ -6,9 +6,12 @@
     "jsx": "preserve",
     "jsxImportSource": "solid-js",
     "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "forceConsistentCasingInFileNames": true,
     "noEmit": true,
     "skipLibCheck": true,
     "types": ["bun"]
   },
-  "include": ["src", "server.ts", "rpc.ts", "vite.config.ts"]
+  "include": ["src", "server.ts", "server.test.ts", "rpc.ts", "rpc.test.ts", "vite.config.ts"]
 }

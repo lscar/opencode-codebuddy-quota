@@ -180,7 +180,7 @@ export function createProxy(deps: {
           signal: controller.signal,
           log: deps.log,
         },
-      ).catch((err) => {
+      ).catch(() => {
         if (controller.signal.aborted) return
         if (!outgoing.headersSent) outgoing.writeHead(500)
         outgoing.end()

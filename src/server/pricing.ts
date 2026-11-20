@@ -1,4 +1,4 @@
-import type { ModelMapping, QuotaConfig } from "./config"
+import type { ModelMapping } from "./config"
 
 /**
  * Pricing and reasoning levels for a CodeBuddy model, taken from the models.dev

@@ -1,8 +1,10 @@
 import { describe, expect, it } from "bun:test"
 import type { ModelMapping } from "./config"
-import { findEntry, resolveCost, vendorEfforts } from "./pricing"
+import { resolveCost, vendorEfforts, type ModelsDevCatalog, type ModelsDevEntry } from "./pricing"
 
-const cat = (models: Record<string, unknown>) => models as any
+/** Build a models.dev-shaped catalog from a provider -> model -> entry map. */
+const cat = (providers: Record<string, { models: Record<string, ModelsDevEntry> }>): ModelsDevCatalog =>
+  providers
 
 const entry = (input: number, output: number, cacheRead?: number) => ({
   cost: {
@@ -13,7 +15,7 @@ const entry = (input: number, output: number, cacheRead?: number) => ({
   },
 })
 
-// 注意：每个 provider 下必须带一层 models，对应真实结构 { [provider]: { models: { [id]: entry } } }
+// Each provider needs a `models` layer, matching the real shape { [provider]: { models: { [id]: entry } } }.
 const catalog = cat({
   deepseek: {
     models: {
@@ -90,7 +92,7 @@ describe("lookup failures", () => {
   })
 
   it("returns nothing rather than prefix-matching a -free sibling", () => {
-    // 目录里只有零价的 step-5-preview-free，没有 step-5-preview。
+    // The catalog holds only the zero-priced step-5-preview-free, not step-5-preview.
     const onlyFree = cat({ "opencode-go": { models: { "step-5-preview-free": entry(0, 0) } } })
     expect(
       resolveCost(m("step-5-preview"), mapping("opencode-go", "step-5-preview"), onlyFree, quiet),

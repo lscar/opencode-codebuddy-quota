@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test"
 import type { CatalogModel } from "./catalog"
 import { DEFAULT_CONFIG } from "./config"
 import { buildModels } from "./model-info"
+import type { ModelsDevCatalog } from "./pricing"
 
 const model = (id: string, name: string, credits: number | null): CatalogModel => ({
   id, name, credits, imageInput: true, efforts: ["high"], defaultEffort: "high",
@@ -74,7 +75,7 @@ describe("buildModels", () => {
           },
         },
       },
-    } as any
+    } satisfies ModelsDevCatalog
     const c = catalog.concat([model("deepseek-v4.1-flash", "DeepSeek-V4.1-Flash", 0.11)])
     const built = buildModels({ catalog: c, config: DEFAULT_CONFIG, modelsDev: dev, log: () => {} })
     const m = built.find((x) => x.id === "deepseek-v4.1-flash")!
@@ -109,7 +110,7 @@ describe("buildModels", () => {
           "deepseek-v4-pro": { capabilities: { reasoning: { supported: true, toggle: true, effort: ["low", "high", "max"] } } },
         },
       },
-    } as any
+    } satisfies ModelsDevCatalog
     const server = { ...model("deepseek-v4-pro", "DeepSeek-V4-Pro", 0.51), efforts: ["high"], defaultEffort: "high" }
     const built = buildModels({
       catalog: [server],
@@ -129,7 +130,7 @@ describe("buildModels", () => {
           "step-5-preview": { capabilities: { reasoning: { effort: ["high", "low", "medium"] } } },
         },
       },
-    } as any
+    } satisfies ModelsDevCatalog
     const server = { ...model("step-5-preview", "Step-5-Preview", 0.33), efforts: ["low", "medium", "high"], defaultEffort: "max" }
     const built = buildModels({ catalog: [server], config: DEFAULT_CONFIG, modelsDev: dev, log: () => {} })
     // Last in the vendor table, but not the heaviest: only a real rank lookup finds it.
@@ -137,7 +138,7 @@ describe("buildModels", () => {
   })
 
   it("keeps the server's levels for a model models.dev has no reasoning data for", () => {
-    const dev = { xiaomi: { models: { "mimo-v2.6-pro": {} } } } as any
+    const dev = { xiaomi: { models: { "mimo-v2.6-pro": {} } } } satisfies ModelsDevCatalog
     const server = model("mimo-v2.6-pro", "Xiaomi MiMo", 0.13)
     const built = buildModels({ catalog: [server], config: DEFAULT_CONFIG, modelsDev: dev, log: () => {} })
     expect(built[0].efforts).toEqual(["high"])

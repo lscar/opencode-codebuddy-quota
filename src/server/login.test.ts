@@ -16,14 +16,15 @@ const jwtWith = (payload: Record<string, unknown>): string => {
   return `${enc({ alg: "none", typ: "JWT" })}.${enc(payload)}.sig`
 }
 
+// Fictional identities only — no real account or enterprise IDs in a public repo.
 const cnPayload = {
-  sub: "d5d448c3-f02a-4d9f-94d5-8a305e959974",
+  sub: "00000000-0000-0000-0000-000000000001",
   iss: "https://www.codebuddy.cn/auth/realms/copilot",
-  enterprise_id: "feh7waqxv11c",
+  enterprise_id: "ent-test-001",
 }
 
 const intlPayload = {
-  sub: "f78182da-d3f6-4847-8715-2546ea5e39c4",
+  sub: "00000000-0000-0000-0000-000000000002",
   iss: "https://www.codebuddy.ai/auth/realms/copilot",
 }
 
@@ -39,7 +40,7 @@ describe("decodeJwtPayload", () => {
     const p = decodeJwtPayload(pair.accessToken)
     expect(p.sub).toBe(cnPayload.sub)
     expect(p.iss).toBe(cnPayload.iss)
-    expect(p.enterprise_id).toBe("feh7waqxv11c")
+    expect(p.enterprise_id).toBe("ent-test-001")
   })
 })
 
@@ -58,9 +59,9 @@ describe("authFromToken", () => {
   it("builds a cn SiteAuth with id, uid, enterpriseId, realmDomain and endpoints", () => {
     const now = 1_000_000
     const auth = authFromToken("cn", pair, () => now)
-    expect(auth.id).toBe("cn:d5d448c3-f02a-4d9f-94d5-8a305e959974")
+    expect(auth.id).toBe("cn:00000000-0000-0000-0000-000000000001")
     expect(auth.uid).toBe(cnPayload.sub)
-    expect(auth.enterpriseId).toBe("feh7waqxv11c")
+    expect(auth.enterpriseId).toBe("ent-test-001")
     expect(auth.realmDomain).toBe("www.codebuddy.cn")
     expect(auth.endpoint).toBe("https://copilot.tencent.com")
     expect(auth.usageHost).toBe("https://www.codebuddy.cn")
@@ -75,7 +76,7 @@ describe("authFromToken", () => {
     const auth = authFromToken("intl", intlPair, () => 0)
     expect(auth.enterpriseId).toBe(null)
     expect(auth.realmDomain).toBe("www.codebuddy.ai")
-    expect(auth.id).toBe("intl:f78182da-d3f6-4847-8715-2546ea5e39c4")
+    expect(auth.id).toBe("intl:00000000-0000-0000-0000-000000000002")
     expect(auth.endpoint).toBe("https://www.codebuddy.ai")
   })
 })

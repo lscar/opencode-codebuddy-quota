@@ -76,7 +76,6 @@ export function createQuotaStore(client: () => QuotaClient): QuotaStore {
   let current: Quota = normalizeQuota(null, { now: Date.now() })
   let lastAttempt = 0
   let inflight: Promise<void> | null = null
-  let inflightSite: Site | undefined = undefined
   let pendingSite: Site | null = null
   let started = false
   const listeners = new Set<(q: Quota) => void>()
@@ -105,7 +104,6 @@ export function createQuotaStore(client: () => QuotaClient): QuotaStore {
     const maxAge = options.force ? 0 : (options.maxAgeMs ?? REFRESH_MS)
     if (now - lastAttempt < maxAge) return
     lastAttempt = now
-    inflightSite = options.site
 
     inflight = (async () => {
       try {
@@ -124,7 +122,6 @@ export function createQuotaStore(client: () => QuotaClient): QuotaStore {
         emit(next)
       } finally {
         inflight = null
-        inflightSite = undefined
         const queued = pendingSite
         pendingSite = null
         // Re-run only if the last request was for a different site than the one

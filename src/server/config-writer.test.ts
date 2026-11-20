@@ -274,15 +274,12 @@ describe("writeModels", () => {
 
   it("reports packageUpdated false when the version already matches or is absent", () => {
     const same = CONFIG.replace("@2.0.90", "@2.0.91")
-    let written = ""
     const matching = writeModels({ providerId: "codebuddy",
       jsoncPath: "opencode.jsonc",
       models: [model("g")],
       packageVersion: "2.0.91",
       readFile: () => same,
-      writeFile: (_p, c) => {
-        written = c
-      },
+      writeFile: () => {},
     })
     // The models block changed, so the file is written, but the spec was already right.
     expect(matching).toEqual({ status: "written", packageUpdated: false })

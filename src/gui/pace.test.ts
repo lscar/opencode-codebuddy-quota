@@ -17,7 +17,6 @@ const q = (over: Record<string, unknown> = {}) =>
   normalizeQuota({ ...payload, ...over }, { now: 0 })
 
 const GREEN = "#4ade80"
-const AMBER = "#f5c246"
 const RED = "#f87171"
 
 describe("paceColor", () => {

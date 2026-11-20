@@ -80,7 +80,7 @@ describe("readCache / writeCache / cachePath", () => {
   it("round-trips the new structure", () => {
     const cache = archive(emptyCache(), auth())
     let written = ""
-    writeCache(cache, (p, data) => { written = data })
+    writeCache(cache, (_p, data) => { written = data })
     expect(written).toContain("accounts")
     const read = readCache(() => written)
     expect(activeAccount(read, "cn")?.accessToken).toBe("a1")

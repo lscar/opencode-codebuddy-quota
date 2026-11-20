@@ -17,7 +17,7 @@ describe("CodebuddyQuota contract", () => {
   })
 
   it("read output declares site + sites (with accounts/activeId) required", () => {
-    const out = CodebuddyQuota.methods.read.output as {
+    const out = CodebuddyQuota.methods.read.output as unknown as {
       required: string[]
       additionalProperties: boolean
       properties: Record<string, unknown>
@@ -28,13 +28,13 @@ describe("CodebuddyQuota contract", () => {
     expect(Object.keys(out.properties).sort()).toEqual([
       "ageSeconds", "cached", "cycleEnd", "cycleStart", "error", "fetchedAt", "ok", "remaining", "resetAt", "site", "sites", "stale", "total", "used",
     ])
-    const sites = out.properties.sites as { items: { required: string[]; properties: Record<string, unknown> } }
+    const sites = out.properties.sites as unknown as { items: { required: string[]; properties: Record<string, unknown> } }
     expect(sites.items.required).toEqual(["site", "available", "accounts", "activeId"])
     expect(Object.keys(sites.items.properties).sort()).toEqual(["accounts", "activeId", "available", "site"])
   })
 
   it("login input requires site, output has ok/error", () => {
-    const login = CodebuddyQuota.methods.login as {
+    const login = CodebuddyQuota.methods.login as unknown as {
       input: { required: string[] }
       output: { properties: Record<string, unknown>; required: string[] }
     }
