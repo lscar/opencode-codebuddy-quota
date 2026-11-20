@@ -79,3 +79,56 @@ describe("fetchUpstream", () => {
     await expect(fetchUpstream({ auth, fetchImpl: html })).rejects.toThrow()
   })
 })
+
+describe("personal account quota (get-user-resource)", () => {
+  const personal: SiteAuth = {
+    ...auth, enterpriseId: null,
+    endpoint: "https://www.codebuddy.ai", usageHost: "https://www.codebuddy.ai",
+  }
+
+  const resourceBody = {
+    code: 0,
+    data: {
+      Response: {
+        Data: {
+          TotalDosage: 380,
+          Accounts: [
+            { PackageName: "Bonus", CycleCapacityRemainPrecise: "250", CycleCapacitySizePrecise: "250", CycleEndTime: "2026-12-03 14:56:36" },
+            { PackageName: "Free", CycleCapacityRemainPrecise: "97.21", CycleCapacitySizePrecise: "100", CycleEndTime: "2026-11-30 23:59:59" },
+            { PackageName: "Bonus", CycleCapacityRemainPrecise: "30", CycleCapacitySizePrecise: "30", CycleEndTime: "2026-12-20 06:35:59" },
+          ],
+        },
+      },
+    },
+  }
+
+  it("routes a personal account to get-user-resource and sums all packages", async () => {
+    let url = ""
+    let headers: Record<string, string> = {}
+    const fetchImpl = (async (u: string | URL | Request, init?: RequestInit) => {
+      url = String(u)
+      headers = (init?.headers ?? {}) as Record<string, string>
+      return new Response(JSON.stringify(resourceBody), { status: 200 })
+    }) as unknown as typeof fetch
+    const r = await fetchUpstream({ auth: personal, fetchImpl })
+    expect(url).toBe("https://www.codebuddy.ai/v2/billing/meter/get-user-resource")
+    expect(headers["authorization"]).toBe("Bearer jwt-cn")
+    expect(r.remaining).toBeCloseTo(377.21, 2)
+    expect(r.total).toBe(380)
+    expect(r.used).toBeCloseTo(2.79, 2)
+    // Next expiry = earliest CycleEndTime among packages.
+    expect(r.cycleEnd).toBe("2026-11-30 23:59:59")
+  })
+
+  it("still uses the enterprise endpoint for an enterprise account", async () => {
+    let url = ""
+    const fetchImpl = (async (u: string | URL | Request) => {
+      url = String(u)
+      return new Response(JSON.stringify({ code: 0, data: {
+        credit: 10, limitNum: 100, cycleEndTime: "2026-11-30 23:59:59",
+      } }), { status: 200 })
+    }) as unknown as typeof fetch
+    await fetchUpstream({ auth, fetchImpl })
+    expect(url).toContain("get-enterprise-user-usage")
+  })
+})
