@@ -38,7 +38,7 @@ async function fetchUserResource(
   const url = `${auth.endpoint}/v2/billing/meter/get-user-resource`
   const response = await doFetch(url, {
     method: "POST",
-    headers: { authorization: `Bearer ${auth.accessToken}`, "Content-Type": "application/json" },
+    headers: { ...apiHeaders(auth), "Content-Type": "application/json" },
     body: "{}",
     signal: opts.signal,
   })
@@ -64,15 +64,20 @@ async function fetchUserResource(
     if (typeof a.CycleEndTime === "string") ends.push(a.CycleEndTime)
   }
   if (!Number.isFinite(total) || total <= 0) throw new Error("upstream payload is missing capacity figures")
-  ends.sort()
+  // Sort by parsed time, not lexical order (formats may include T/ms/timezone).
+  const sorted = ends
+    .map((s) => ({ s, t: new Date(s).getTime() }))
+    .filter((e) => Number.isFinite(e.t))
+    .sort((a, b) => a.t - b.t)
+  const earliest = sorted[0]?.s ?? null
   const at = opts.now ? opts.now() : Date.now()
   return {
     remaining: Math.max(0, remaining),
     used: Math.max(0, total - remaining),
     total,
     cycleStart: null,
-    cycleEnd: ends[0] ?? null,
-    resetAt: ends[0] ?? null,
+    cycleEnd: earliest,
+    resetAt: earliest,
     fetchedAt: new Date(at).toISOString(),
   }
 }

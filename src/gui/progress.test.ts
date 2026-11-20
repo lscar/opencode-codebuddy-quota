@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test"
-import { AMBER, GREEN, NEUTRAL, RED, paceColor, paceLabel, progressColor, signedPp, signedPpColor } from "./pace"
+import { GREEN, RED, paceColor, paceLabel, signedPp } from "./pace"
 import { normalizeQuota } from "./quota"
 
 const base = {
@@ -30,27 +30,6 @@ describe("diff is time progress minus spend progress", () => {
   })
 })
 
-describe("progressColor", () => {
-  it("is green at 50 and below", () => {
-    expect(progressColor(0)).toBe(GREEN)
-    expect(progressColor(50)).toBe(GREEN)
-  })
-
-  it("is amber above 50 up to and including 80", () => {
-    expect(progressColor(50.01)).toBe(AMBER)
-    expect(progressColor(80)).toBe(AMBER)
-  })
-
-  it("is red above 80", () => {
-    expect(progressColor(80.01)).toBe(RED)
-    expect(progressColor(100)).toBe(RED)
-  })
-
-  it("is neutral when the value is unknown", () => {
-    expect(progressColor(null)).toBe(NEUTRAL)
-  })
-})
-
 describe("signedPp", () => {
   it("shows a positive gap with a plus sign", () => {
     expect(signedPp(13.84)).toBe("+13.84 pp")
@@ -66,20 +45,6 @@ describe("signedPp", () => {
 
   it("is neutral when the gap is unknown", () => {
     expect(signedPp(null)).toBe("—")
-  })
-})
-
-describe("signedPpColor", () => {
-  it("is green when spending lags behind the clock", () => {
-    expect(signedPpColor(13.84)).toBe(GREEN)
-  })
-
-  it("is red when spending runs ahead of the clock", () => {
-    expect(signedPpColor(-13.84)).toBe(RED)
-  })
-
-  it("is neutral when the gap is unknown", () => {
-    expect(signedPpColor(null)).toBe(NEUTRAL)
   })
 })
 

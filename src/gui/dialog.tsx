@@ -2,8 +2,9 @@ import type { JSX } from "solid-js"
 import { createSignal, onMount } from "solid-js"
 import type { Ui } from "@opencode/plugin/gui"
 import type { Site, SiteInfo } from "../shared"
-import { formatCredits, formatPct, paceColor, paceLabel, signedPp, type PaceLabel } from "./pace"
-import { remainingShare, type Quota } from "./quota"
+import { formatCredits, paceColor, paceLabel, type PaceLabel } from "./pace"
+import type { Quota } from "./quota"
+import { freshness, paceHint, pctInt } from "./dialog-helpers"
 
 export interface QuotaDialogProps {
   quota: Quota
@@ -48,15 +49,6 @@ const key: JSX.CSSProperties = { opacity: "0.62" }
 const val: JSX.CSSProperties = { "font-variant-numeric": "tabular-nums" }
 
 const SITE_LABEL: Record<Site, string> = { cn: "国内站", intl: "国际站" }
-
-function freshness(q: Quota): { text: string; color: string } {
-  if (q.status === "error") return { text: "不可用", color: "#ff7a7a" }
-  if (q.status === "cached") {
-    return { text: q.ageSeconds === null ? "缓存" : `缓存（${q.ageSeconds} 秒前）`, color: "#ffb84d" }
-  }
-  if (q.status === "stale") return { text: "过期", color: "#ff7a7a" }
-  return { text: "实时", color: "#3ddc97" }
-}
 
 export function QuotaDialog(props: QuotaDialogProps): JSX.Element {
   const q = () => props.quota
@@ -193,8 +185,8 @@ export function QuotaDialog(props: QuotaDialogProps): JSX.Element {
             )}
           </div>
           <div style={{ display: "flex", "justify-content": "space-between", "font-size": "10.5px", opacity: "0.8", "margin-top": "8px" }}>
-            <span>● 已用进度 {formatPct(q().usedPct)}</span>
-            <span>▏时间已过 {formatPct(q().timePct)}</span>
+            <span>● 已用进度 {pctInt(q().usedPct)}</span>
+            <span>▏时间已过 {pctInt(q().timePct)}</span>
           </div>
 
           <div
@@ -211,7 +203,7 @@ export function QuotaDialog(props: QuotaDialogProps): JSX.Element {
             <div>
               <div style={{ "font-weight": "700", color: hintColor[hintTone[paceLabel(q())]] }}>
                 {labelText[paceLabel(q())]}
-                {q().diff !== null ? ` · ${paceLabel(q()) === "normal" ? "慢于" : "快于"}时间 ${signedPp(Math.abs(q().diff!))}` : ""}
+                {paceHint(q().diff)}
               </div>
               <div style={{ opacity: "0.72", "font-size": "10.5px" }}>
                 积分消耗{q().diff !== null && q().diff! < 0 ? "快于" : "慢于"}时间流逝，按当前速度
@@ -223,7 +215,7 @@ export function QuotaDialog(props: QuotaDialogProps): JSX.Element {
           <div style={{ "margin-top": "13px", "border-top": "1px solid rgba(255,255,255,.1)", "padding-top": "6px" }}>
             <div style={row}><span style={key}>已使用</span><span style={val}>{formatCredits(q().used)} 积分</span></div>
             <div style={row}><span style={key}>总额度</span><span style={val}>{formatCredits(q().total)} 积分</span></div>
-            <div style={{ ...row, "border-bottom": "none" }}><span style={key}>下次重置</span><span style={val}>{q().resetAt ?? "—"}</span></div>
+            <div style={{ ...row, "border-bottom": "none" }}><span style={key}>到期 / 重置</span><span style={val}>{q().resetAt ?? "—"}</span></div>
           </div>
         </>
       )}

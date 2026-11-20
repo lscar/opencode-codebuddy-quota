@@ -148,6 +148,26 @@ describe("createQuotaStore", () => {
     expect(reads).toBe(1)
   })
 
+  it("queues a different site requested during an in-flight refresh", async () => {
+    let release: () => void = () => {}
+    const sites: Array<"cn" | "intl"> = []
+    const store = createQuotaStore(() =>
+      client(async (input) => {
+        const s = input?.site ?? "cn"
+        sites.push(s)
+        if (s === "cn") await new Promise<void>((r) => { release = r })
+        return { ...okBody, site: s }
+      }),
+    )
+    const first = store.refresh({ force: true, site: "cn" })
+    // Second call with a different site lands while cn is still in flight.
+    const second = store.refresh({ force: true, site: "intl" })
+    release()
+    await Promise.all([first, second])
+    await new Promise((r) => setTimeout(r, 0))
+    expect(sites).toContain("intl")
+  })
+
   it("login returns false and does not refresh when the RPC fails", async () => {
     let reads = 0
     const store = createQuotaStore(() =>

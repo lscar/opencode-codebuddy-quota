@@ -75,6 +75,26 @@ describe("loadConfig", () => {
     expect(c.excluded_models).toEqual(["hy3"])
   })
 
+  it("maps every resolvable intl cli id (4 routing aliases intentionally absent)", () => {
+    // 26 cli ids − 4 virtual aliases = 22 resolvable; hy3 is globally excluded,
+    // leaving 21 offered. Assert the exact mapping id set so a future omission
+    // (e.g. dropping gpt-5.4) fails here instead of silently shrinking the picker.
+    const intlIds = [
+      "hy4-preview", "hy3", "deepseek-v4.1-flash", "deepseek-v4.1-flash-sg",
+      "gpt-6-astra", "gpt-6.1-sol", "gpt-6-sol", "gpt-6-luna", "gpt-5.6-sol",
+      "gpt-5.6-terra", "gpt-5.6-luna", "gpt-5.5", "gpt-5.4", "grok-4.7",
+      "gemini-3.8-flash", "glm-5.3-flash", "glm-5.3", "glm-5.2",
+      "minimax-m3.1-flash", "kimi-k3.1-pro", "kimi-k3.1-pro-highspeed", "kimi-k3",
+    ]
+    for (const id of intlIds) expect(DEFAULT_CONFIG.models[id]).toBeDefined()
+    expect(intlIds).toHaveLength(22)
+    expect(intlIds.filter((id) => !DEFAULT_CONFIG.excluded_models.includes(id))).toHaveLength(21)
+    // Virtual routing aliases must stay unmapped.
+    for (const alias of ["default-model", "fast-model", "balanced-model", "primary-model"]) {
+      expect(DEFAULT_CONFIG.models[alias]).toBeUndefined()
+    }
+  })
+
   it("ships a mapping that points every default model at its vendor", () => {
     expect(DEFAULT_CONFIG.models["deepseek-v4-pro"]).toEqual({ provider: "deepseek", model: "deepseek-v4-pro" })
     expect(DEFAULT_CONFIG.models["deepseek-v4.1-flash"]).toEqual({

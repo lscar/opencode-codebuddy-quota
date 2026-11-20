@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test"
-import { normalizeQuota, remainingPercent, timeLeftPercent } from "./quota"
+import { normalizeQuota, remainingPercent } from "./quota"
 
 const base = {
   ok: true,
@@ -78,46 +78,39 @@ describe("remainingPercent", () => {
   })
 })
 
-describe("timeLeftPercent", () => {
-  it("measures from the same edge as the remaining fill", () => {
-    // About 23% of the cycle has elapsed, so about 77% of it is left.
+describe("time progress is measured from the cycle start", () => {
+  it("measures how much of the cycle has elapsed", () => {
     const v = q()
     expect(v.timePct).toBeGreaterThan(23)
     expect(v.timePct).toBeLessThan(25)
-    expect(timeLeftPercent(v)).toBeGreaterThan(75)
-    expect(timeLeftPercent(v)).toBeLessThan(77)
   })
 
-  it("starts the cycle at the right edge and ends it at the left", () => {
+  it("reads 0 at the start and ~100 at the end", () => {
     const atStart = q({ fetchedAt: new Date(Date.parse("2026-10-28T00:00:00")).toISOString() })
     const atEnd = q({ fetchedAt: new Date(Date.parse("2026-11-27T23:59:00")).toISOString() })
-    expect(timeLeftPercent(atStart)).toBeGreaterThan(99)
-    expect(timeLeftPercent(atEnd)).toBeLessThan(1)
-  })
-
-  it("sits close to the left when the cycle is nearly spent", () => {
-    const near = q({ fetchedAt: new Date(Date.parse("2026-11-27T00:00:00")).toISOString() })
-    expect(timeLeftPercent(near)).toBeLessThan(5)
+    expect(atStart.timePct).toBeLessThan(1)
+    expect(atEnd.timePct).toBeGreaterThan(99)
   })
 
   it("is null when the cycle dates are unusable", () => {
-    expect(timeLeftPercent(q({ cycleStart: null, cycleEnd: null }))).toBeNull()
+    expect(q({ cycleStart: null, cycleEnd: null }).timePct).toBeNull()
   })
 })
 
 describe("capsule and marker share one scale", () => {
+  // The dialog draws the time marker at (100 - timePct)%, from the same left edge
+  // as the remaining fill. These assertions keep the two on one scale.
   it("shows a slower-than-time reading with its fill past the marker", () => {
     const v = q()
-    // 88% of the credits left, ~76% of the cycle left: spending is behind schedule,
-    // so the fill reaches further right than the marker. Both start at the left edge.
+    const marker = 100 - (v.timePct ?? 0)
     expect(remainingPercent(v)).toBe(88)
-    expect(timeLeftPercent(v) ?? 100).toBeLessThan(remainingPercent(v) ?? 0)
+    expect(marker).toBeLessThan(remainingPercent(v) ?? 0)
   })
 
   it("shows an ahead-of-schedule reading with its fill short of the marker", () => {
-    // Same instant, but the credits are nearly gone.
     const v = q({ used: 6300, remaining: 700 })
+    const marker = 100 - (v.timePct ?? 0)
     expect(remainingPercent(v)).toBe(10)
-    expect(timeLeftPercent(v) ?? 0).toBeGreaterThan(remainingPercent(v) ?? 100)
+    expect(marker).toBeGreaterThan(remainingPercent(v) ?? 100)
   })
 })

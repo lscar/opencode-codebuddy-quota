@@ -76,6 +76,7 @@ export function createQuotaStore(client: () => QuotaClient): QuotaStore {
   let current: Quota = normalizeQuota(null, { now: Date.now() })
   let lastAttempt = 0
   let inflight: Promise<void> | null = null
+  let pendingSite: Site | null = null
   let started = false
   const listeners = new Set<(q: Quota) => void>()
 
@@ -93,7 +94,12 @@ export function createQuotaStore(client: () => QuotaClient): QuotaStore {
   const refresh = async (options: { force?: boolean; maxAgeMs?: number; site?: Site } = {}) => {
     // One request at a time: without this, a forced refresh racing a hover refresh
     // can land out of order and let the older reading win.
-    if (inflight) return inflight
+    if (inflight) {
+      // A different site requested while another read is in flight must not be
+      // silently dropped — queue it to run once the current read settles.
+      if (options.site && options.site !== current.site) pendingSite = options.site
+      return inflight
+    }
     const now = Date.now()
     const maxAge = options.force ? 0 : (options.maxAgeMs ?? REFRESH_MS)
     if (now - lastAttempt < maxAge) return
@@ -116,6 +122,9 @@ export function createQuotaStore(client: () => QuotaClient): QuotaStore {
         emit(next)
       } finally {
         inflight = null
+        const queued = pendingSite
+        pendingSite = null
+        if (queued) void refresh({ force: true, site: queued })
       }
     })()
 

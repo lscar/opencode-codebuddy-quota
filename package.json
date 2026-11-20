@@ -30,10 +30,10 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/lscar/opencode-codebuddy-quota.git"
+    "url": "git+https://github.com/lscar/opencode-codebuddy-quota-v2.git"
   },
-  "homepage": "https://github.com/lscar/opencode-codebuddy-quota#readme",
-  "bugs": "https://github.com/lscar/opencode-codebuddy-quota/issues",
+  "homepage": "https://github.com/lscar/opencode-codebuddy-quota-v2#readme",
+  "bugs": "https://github.com/lscar/opencode-codebuddy-quota-v2/issues",
   "dependencies": {
     "@opencode/plugin": "2.2.5"
   },

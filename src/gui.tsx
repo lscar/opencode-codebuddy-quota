@@ -48,7 +48,7 @@ export default Plugin.define({
     // Any site needing login shows an amber dot outside the capsule.
     const needsLogin = () => store.read().sites.some((s) => !s.available)
 
-    // plan B: the capsule lives on the session header row, the only surface the
+    // The capsule lives on the session header row — the only surface the
     // side-tabs layout leaves a plugin. See the design notes for why.
     //
     // Every value is read inside the JSX, not in the render body: a signal read

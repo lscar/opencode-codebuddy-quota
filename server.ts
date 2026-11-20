@@ -121,7 +121,7 @@ export default Plugin.define({
         const site = resolveSite(store, requested, (m) => log(m))
         const state = store.all()
         const reading = await source.read(site, context.signal)
-        return toWireReading(reading, { site, sites: siteInfo(state).sites })
+        return toWireReading(reading, { site, sites: siteInfo(state, (s) => store.refreshFailed(s)).sites })
       },
       login: async (input) => {
         const site = (input as { site: Site }).site

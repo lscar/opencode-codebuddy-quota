@@ -156,6 +156,8 @@ export interface TokenStore {
   archive(auth: SiteAuth): void
   select(site: Site): void
   all(): TokenCache
+  /** True when the last refresh for this site failed (in-memory only). */
+  refreshFailed(site: Site): boolean
 }
 
 interface StoreDeps extends RefreshDeps {
@@ -170,6 +172,7 @@ export function createTokenStore(deps: StoreDeps = {}): TokenStore {
   let cache = deps.load ? deps.load() : readCache()
   const persist = deps.persist ?? ((c: TokenCache) => writeCache(c))
   const inFlight: Partial<Record<Site, Promise<SiteAuth>>> = {}
+  const refreshErrors: Record<Site, boolean> = { cn: false, intl: false }
 
   const save = () => persist(cache)
 
@@ -187,6 +190,7 @@ export function createTokenStore(deps: StoreDeps = {}): TokenStore {
         save()
       }
     },
+    refreshFailed: (site) => refreshErrors[site],
     ensureFresh: (site) => {
       const current = activeAccount(cache, site)
       if (!current) return Promise.reject(new Error(`no account for ${site}`))
@@ -196,8 +200,13 @@ export function createTokenStore(deps: StoreDeps = {}): TokenStore {
       const task = refreshSite(current, deps)
         .then((next) => {
           cache = archive(cache, next)
+          refreshErrors[site] = false
           save()
           return next
+        })
+        .catch((error) => {
+          refreshErrors[site] = true
+          throw error
         })
         .finally(() => {
           delete inFlight[site]

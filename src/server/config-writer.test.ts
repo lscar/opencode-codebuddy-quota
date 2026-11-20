@@ -46,7 +46,7 @@ const CONFIG = `{
 // rewritten members keep the file's CRLF endings.
 const run = (models: ImportedModel[], config = CONFIG) => {
   let written = ""
-  const result = writeModels({
+  const result = writeModels({ providerId: "codebuddy",
     jsoncPath: "opencode.jsonc",
     models,
     readFile: () => config,
@@ -258,7 +258,7 @@ describe("writeModels", () => {
 
   it("moves the provider package to a newer version", () => {
     let written = ""
-    const result = writeModels({
+    const result = writeModels({ providerId: "codebuddy",
       jsoncPath: "opencode.jsonc",
       models: [model("g")],
       packageVersion: "2.0.91",
@@ -275,7 +275,7 @@ describe("writeModels", () => {
   it("reports packageUpdated false when the version already matches or is absent", () => {
     const same = CONFIG.replace("@2.0.90", "@2.0.91")
     let written = ""
-    const matching = writeModels({
+    const matching = writeModels({ providerId: "codebuddy",
       jsoncPath: "opencode.jsonc",
       models: [model("g")],
       packageVersion: "2.0.91",
@@ -331,7 +331,7 @@ describe("writeModels", () => {
   it("never writes a non-version into the package spec", () => {
     for (const bad of ["", "  ", "@ai-sdk/openai-compatible", "{ \"a\": 1 }", "2.0"]) {
       let written = ""
-      const result = writeModels({
+      const result = writeModels({ providerId: "codebuddy",
         jsoncPath: "opencode.jsonc",
         models: [model("g"), model("h")],
         packageVersion: bad,
@@ -352,7 +352,7 @@ describe("writeModels", () => {
       "aisdk:@ai-sdk/anthropic@1.0.0",
     )
     let written = ""
-    const result = writeModels({
+    const result = writeModels({ providerId: "codebuddy",
       jsoncPath: "opencode.jsonc",
       models: [model("g"), model("h")],
       packageVersion: "2.0.91",
@@ -369,7 +369,7 @@ describe("writeModels", () => {
   it("leaves a package key nested under settings alone", () => {
     const nested = CONFIG.replace('"baseURL":', '"package": "not-the-provider-package", "baseURL":')
     let written = ""
-    const result = writeModels({
+    const result = writeModels({ providerId: "codebuddy",
       jsoncPath: "opencode.jsonc",
       models: [model("g"), model("h")],
       packageVersion: "2.0.91",
@@ -401,7 +401,7 @@ describe("writeModels", () => {
 }
 `
     let written = ""
-    const result = writeModels({
+    const result = writeModels({ providerId: "codebuddy",
       jsoncPath: "opencode.jsonc",
       models: [model("g"), model("h")],
       packageVersion: "2.0.91",
@@ -420,7 +420,7 @@ describe("writeModels", () => {
   it("calls backup with the original text only when the content changes", () => {
     const backups: string[] = []
     const original = run([model("g")]).written
-    writeModels({
+    writeModels({ providerId: "codebuddy",
       jsoncPath: "opencode.jsonc",
       models: [model("g")],
       readFile: () => original,
@@ -429,7 +429,7 @@ describe("writeModels", () => {
     })
     expect(backups).toHaveLength(0)
 
-    writeModels({
+    writeModels({ providerId: "codebuddy",
       jsoncPath: "opencode.jsonc",
       models: [model("g"), model("h")],
       readFile: () => original,
@@ -457,7 +457,7 @@ describe("writeModels", () => {
   })
 
   it("refuses to touch a missing file", () => {
-    const result = writeModels({
+    const result = writeModels({ providerId: "codebuddy",
       jsoncPath: "nope.jsonc",
       models: [model("g")],
       readFile: () => {

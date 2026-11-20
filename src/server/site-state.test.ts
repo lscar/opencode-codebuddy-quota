@@ -35,6 +35,12 @@ describe("availableSites", () => {
   it("returns empty when no site has an account", () => {
     expect(availableSites(empty())).toEqual([])
   })
+
+  it("treats a site with a failed refresh as unavailable", () => {
+    const cache = archive(empty(), auth())
+    expect(availableSites(cache)).toEqual(["cn"])
+    expect(availableSites(cache, (s) => s === "cn")).toEqual([])
+  })
 })
 
 describe("currentSite", () => {

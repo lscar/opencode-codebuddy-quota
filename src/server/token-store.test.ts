@@ -139,6 +139,27 @@ describe("refreshSite", () => {
 })
 
 describe("createTokenStore.ensureFresh", () => {
+  it("marks refreshFailed on failure and clears it on success", async () => {
+    let fail = true
+    const fetchImpl = (async () => {
+      if (fail) return new Response(JSON.stringify({ code: 1, msg: "token revoked" }), {
+        status: 200, headers: { "content-type": "application/json" },
+      })
+      return new Response(JSON.stringify({ code: 0, data: {
+        accessToken: "a2", refreshToken: "r2", expiresIn: 100, refreshExpiresIn: 200,
+      } }), { status: 200, headers: { "content-type": "application/json" } })
+    }) as unknown as typeof fetch
+    const store = createTokenStore({
+      fetchImpl, now: () => 0, persist: () => {}, load: emptyCache,
+    })
+    store.archive(auth({ expiresAt: -1 }))
+    await expect(store.ensureFresh("cn")).rejects.toThrow()
+    expect(store.refreshFailed("cn")).toBe(true)
+    fail = false
+    await store.ensureFresh("cn")
+    expect(store.refreshFailed("cn")).toBe(false)
+  })
+
   it("single-flights concurrent refreshes", async () => {
     let calls = 0
     const fetchImpl = (async () => {

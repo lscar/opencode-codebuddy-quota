@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test"
+import { freshness, paceHint, pctInt } from "./dialog-helpers"
 import { normalizeQuota } from "./quota"
 import { formatCredits, formatPct, paceColor } from "./pace"
 
@@ -54,6 +55,28 @@ describe("dialog site data", () => {
     expect(v.site).toBe("cn")
     expect(v.sites.map((s) => s.site)).toEqual(["cn", "intl"])
     expect(v.sites.every((s) => !s.available)).toBe(true)
+  })
+})
+
+describe("dialog display helpers", () => {
+  it("pctInt rounds to an integer and clamps to 0..100", () => {
+    expect(pctInt(48.12)).toBe("48%")
+    expect(pctInt(128.57)).toBe("100%")
+    expect(pctInt(-5)).toBe("0%")
+    expect(pctInt(null)).toBe("—")
+  })
+
+  it("paceHint uses diff sign for direction (ahead still means slower)", () => {
+    expect(paceHint(13)).toContain("慢于")
+    expect(paceHint(2)).toContain("慢于") // 'ahead' label must not read "快于"
+    expect(paceHint(-3)).toContain("快于")
+    expect(paceHint(null)).toBe("")
+  })
+
+  it("freshness reflects status", () => {
+    expect(freshness(q()).text).toBe("实时")
+    expect(freshness(q({ cached: true, ageSeconds: 12 })).text).toBe("缓存（12 秒前）")
+    expect(freshness(q({ stale: true, error: "x" })).color).toBe("#ff7a7a")
   })
 })
 

@@ -183,16 +183,6 @@ export function remainingPercent(q: Quota): number | null {
 }
 
 /**
- * Where the time-progress marker sits on a bar whose fill is the *remaining* share.
- * The bar reads left-to-right as "what is left", so the marker is the remaining
- * share of the cycle, not the elapsed one: both are measured from the same edge.
- */
-export function timeLeftPercent(q: Quota): number | null {
-  if (q.timePct === null || !Number.isFinite(q.timePct)) return null
-  return Math.min(100, Math.max(0, 100 - q.timePct))
-}
-
-/**
  * The remaining share at full precision, for every label that is not the capsule.
  * The capsule rounds it to a whole number; the tooltip and the dialog must agree
  * with each other, so both read this one function.

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test"
 import { paceLabel } from "./pace"
-import { normalizeQuota, timeLeftPercent } from "./quota"
+import { normalizeQuota } from "./quota"
 
 const base = {
   ok: true,
@@ -45,9 +45,9 @@ describe("time progress uses the reset instant as its end", () => {
     expect(atStart.timePct).toBe(0)
   })
 
-  it("leaves the marker at the far left once the period is spent", () => {
+  it("puts the marker at the far left once the period is spent", () => {
     const nearEnd = q({ fetchedAt: localIso(2026, 11, 27, 23, 0, 0) })
-    expect(timeLeftPercent(nearEnd)).toBeLessThan(0.5)
+    expect(100 - (nearEnd.timePct ?? 0)).toBeLessThan(0.5)
   })
 
   it("falls back to cycleEnd when the upstream omits resetAt", () => {

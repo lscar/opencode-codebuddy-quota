@@ -1,7 +1,7 @@
 import { readFileSync, writeFileSync } from "node:fs"
 import type { ImportedModel } from "./model-info"
 import { withVersion } from "./package-version"
-import { isVersion, packageSpec, PROVIDER_ID } from "./package-spec"
+import { isVersion, packageSpec, PROVIDER_IDS } from "./package-spec"
 
 /**
  * Writes the imported model list into the user's `opencode.jsonc`.
@@ -238,7 +238,9 @@ function indentOf(text: string, at: number): string {
  * configuration.
  */
 export function writeModels(deps: WriteModelsDeps): WriteModelsResult {
-  const providerId = deps.providerId ?? PROVIDER_ID
+  // Default to the first NEW provider, never the legacy `codebuddy`: a future
+  // missed providerId must not rewrite the old provider block.
+  const providerId = deps.providerId ?? PROVIDER_IDS[0]
   const read = deps.readFile ?? ((p: string) => readFileSync(p, "utf8"))
   const write = deps.writeFile ?? ((p: string, c: string) => writeFileSync(p, c, "utf8"))
 
@@ -350,7 +352,7 @@ interface ObjectRange {
  * providers' string values, and splicing there would drop the models into the
  * wrong provider.
  */
-function locateProvider(bare: string, providerId: string = PROVIDER_ID): ObjectRange | null {
+function locateProvider(bare: string, providerId: string = PROVIDER_IDS[0]): ObjectRange | null {
   const root = objectAt(bare, skipSpace(bare, 0))
   if (!root) return null
   const providers = memberObject(bare, root.open, "providers")

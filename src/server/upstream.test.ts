@@ -113,6 +113,8 @@ describe("personal account quota (get-user-resource)", () => {
     const r = await fetchUpstream({ auth: personal, fetchImpl })
     expect(url).toBe("https://www.codebuddy.ai/v2/billing/meter/get-user-resource")
     expect(headers["authorization"]).toBe("Bearer jwt-cn")
+    expect(headers["x-domain"]).toBe("www.codebuddy.ai")
+    expect(headers["user-agent"]).toContain("CLI/")
     expect(r.remaining).toBeCloseTo(377.21, 2)
     expect(r.total).toBe(380)
     expect(r.used).toBeCloseTo(2.79, 2)
