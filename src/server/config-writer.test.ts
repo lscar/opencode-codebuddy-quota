@@ -111,6 +111,44 @@ describe("writeProvider", () => {
     expect(wrote).toBe(false)
   })
 
+  it("inserts a valid block into an empty providers object without a stray comma", () => {
+    for (const cfg of [
+      '{\n  "providers": {}\n}\n',
+      '{\n  "providers": {\n  }\n}\n',
+      '{\n  "providers": { // note\n  }\n}\n',
+    ]) {
+      let written = ""
+      const result = writeProvider({
+        jsoncPath: "opencode.jsonc", providerId: "codebuddy-cn",
+        models: [model("g")],
+        readFile: () => cfg,
+        writeFile: (_p, c) => { written = c },
+      })
+      expect(result.status).toBe("written")
+      // Strict JSON (comments blanked by stripComments) must parse, and there
+      // must be no `},}}` artifact.
+      expect(stripComments(written)).not.toContain("},}")
+      const parsed = JSON.parse(stripComments(written)) as { providers: Record<string, unknown> }
+      expect(Object.keys(parsed.providers)).toEqual(["codebuddy-cn"])
+      // Indented, not flush-left.
+      expect(written).toMatch(/\n    "codebuddy-cn":/)
+    }
+  })
+
+  it("skips when the file changed on disk while editing (concurrent writer)", () => {
+    let wrote = false
+    const result = writeProvider({
+      jsoncPath: "opencode.jsonc", providerId: "codebuddy-intl",
+      models: [model("g")],
+      readFile: () => CONFIG,
+      // Disk now differs from what we read -> another plugin wrote in between.
+      diskRead: () => CONFIG.replace("v4.1-flash", "v9.9-flash"),
+      writeFile: () => { wrote = true },
+    })
+    expect(result.status).toBe("skipped")
+    expect(wrote).toBe(false)
+  })
+
   it("only triggers backup when a change was written", () => {
     const first = runProvider("codebuddy-intl")
     expect(first.backups.length).toBe(1)

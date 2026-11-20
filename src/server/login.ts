@@ -114,6 +114,10 @@ export async function getAuthState(
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
       const res = await doFetch(url, { method: "POST", headers: NO_CREDENTIALS_HEADERS, body: "{}" })
+      // A 4xx is a real answer, not a transient network failure — don't retry it.
+      if (!res.ok && res.status < 500) {
+        throw new Error(`auth/state HTTP ${res.status}`)
+      }
       const json = (await res.json()) as {
         code?: number
         data?: { state?: string; authUrl?: string }
@@ -137,8 +141,12 @@ export function openBrowser(
   const opener =
     deps.opener ??
     ((u: string) => {
-      const cmd = process.platform === "win32" ? "cmd" : process.platform === "darwin" ? "open" : "xdg-open"
-      const args = process.platform === "win32" ? ["/c", "start", "", u] : [u]
+      // `cmd /c start` misparses URLs containing `&` (the authUrl always has
+      // `?platform=CLI&state=...`). Use a shell-free opener on Windows.
+      const cmd = process.platform === "win32" ? "rundll32" : process.platform === "darwin" ? "open" : "xdg-open"
+      const args = process.platform === "win32"
+        ? ["url.dll,FileProtocolHandler", u]
+        : [u]
       const child = spawn(cmd, args, { detached: true, stdio: "ignore" })
       child.unref()
     })
@@ -179,9 +187,9 @@ export async function pollToken(
     if (json.data?.accessToken) {
       return authFromToken(site, json.data, now)
     }
-    const pending =
-      json.code === PENDING_CODE ||
-      (typeof json.msg === "string" && /login ing/i.test(json.msg))
+    // Only the documented pending code means "keep waiting". The message is
+    // advisory only — relying on its text could mask a real auth error.
+    const pending = json.code === PENDING_CODE
     if (!pending) {
       throw new Error(`pollToken failed: code=${json.code ?? "?"} msg=${json.msg ?? "?"}`)
     }

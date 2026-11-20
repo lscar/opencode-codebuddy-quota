@@ -82,6 +82,33 @@ describe("handleRequest", () => {
     expect(res.chunks.join("")).toContain("data: [DONE]")
   })
 
+  it("does not forward content-encoding (body is already decompressed)", async () => {
+    const fetchImpl = (async () =>
+      new Response("data: [DONE]\n\n", {
+        status: 200,
+        headers: { "content-type": "text/event-stream", "content-encoding": "gzip" },
+      })) as unknown as typeof fetch
+    const res = resDouble()
+    await handleRequest({ url: "/cn/v2/chat/completions" }, res, {
+      store: storeWith(), fetchImpl, readBody: async () => "{}",
+    })
+    expect(res.headers["content-encoding"]).toBeUndefined()
+  })
+
+  it("passes the client abort signal through to the upstream fetch", async () => {
+    const controller = new AbortController()
+    let seen: AbortSignal | undefined
+    const fetchImpl = (async (_u: string | URL | Request, init?: RequestInit) => {
+      seen = init?.signal as AbortSignal | undefined
+      return new Response('data: [DONE]\n\n', { status: 200, headers: { "content-type": "text/event-stream" } })
+    }) as unknown as typeof fetch
+    const req: ProxyRequest = { url: "/cn/v2/chat/completions", method: "POST" }
+    await handleRequest(req, resDouble(), {
+      store: storeWith(), fetchImpl, readBody: async () => "{}", signal: controller.signal,
+    })
+    expect(seen).toBe(controller.signal)
+  })
+
   it("passes non-200 status and body through unchanged", async () => {
     const fetchImpl = (async () =>
       new Response('{"code":400}', { status: 400, headers: { "content-type": "application/json" } })

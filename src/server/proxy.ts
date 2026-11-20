@@ -34,6 +34,8 @@ export interface HandleRequestDeps {
   fetchImpl?: typeof fetch
   /** Reads the inbound body; injectable so the handler is testable without a socket. */
   readBody?: (req: ProxyRequest) => Promise<string>
+  /** Aborts when the client disconnects, so we stop the upstream SSE stream. */
+  signal?: AbortSignal
 }
 
 /** Force `stream:true` on the chat body so the upstream always answers with SSE. */
@@ -49,8 +51,18 @@ function withStream(body: string): string {
 
 const copyHeaders = (from: Headers, to: ProxyResponse): void => {
   for (const [key, value] of from.entries()) {
-    // Hop-by-hop / framing headers are meaningless on the rewritten response.
-    if (key === "content-length" || key === "transfer-encoding" || key === "connection") continue
+    // Hop-by-hop / framing / content-encoding headers are unsafe to forward:
+    // undici already decompressed the body, so a forwarded gzip header would
+    // make strict clients try to gunzip plain text.
+    if (
+      key === "content-length" ||
+      key === "transfer-encoding" ||
+      key === "connection" ||
+      key === "content-encoding" ||
+      key === "keep-alive" ||
+      key === "upgrade" ||
+      key === "trailer"
+    ) continue
     to.setHeader(key, value)
   }
 }
@@ -83,6 +95,7 @@ export async function handleRequest(
         "Content-Type": "application/json",
       },
       body,
+      signal: deps.signal,
     })
   } catch (err) {
     res.status(502)
@@ -122,9 +135,30 @@ export function createProxy(deps: {
       if (typeof v === "string") headers[k] = v
       else if (Array.isArray(v)) headers[k] = v.join(", ")
     }
+    const controller = new AbortController()
+    // A client that disconnects (Esc / tab close) must stop the upstream stream,
+    // otherwise the full SSE answer is generated and billed to the user's quota.
+    outgoing.on("close", () => controller.abort())
+    incoming.on("aborted", () => controller.abort())
     const chunks: Buffer[] = []
-    incoming.on("data", (c: Buffer) => chunks.push(c))
+    let size = 0
+    const MAX_BODY = 8 * 1024 * 1024
+    let tooLarge = false
+    incoming.on("data", (c: Buffer) => {
+      size += c.length
+      if (size > MAX_BODY) {
+        tooLarge = true
+        controller.abort()
+        return
+      }
+      chunks.push(c)
+    })
     incoming.on("end", () => {
+      if (tooLarge || controller.signal.aborted) {
+        if (!outgoing.headersSent) outgoing.writeHead(413)
+        outgoing.end()
+        return
+      }
       const text = Buffer.concat(chunks).toString("utf8")
       const response: ProxyResponse = {
         status: (code) => outgoing.writeHead(code),
@@ -139,10 +173,12 @@ export function createProxy(deps: {
           store: deps.store,
           fetchImpl: deps.fetchImpl,
           readBody: async () => text,
+          signal: controller.signal,
         },
       ).catch((err) => {
+        if (controller.signal.aborted) return
         if (!outgoing.headersSent) outgoing.writeHead(500)
-        outgoing.end(`proxy error: ${String((err as Error)?.message ?? err)}`)
+        outgoing.end()
       })
     })
   })

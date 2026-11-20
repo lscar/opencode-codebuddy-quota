@@ -26,8 +26,26 @@ export interface WriteModelsDeps {
   packageVersion?: string | null
   readFile?: (path: string) => string
   writeFile?: (path: string, content: string) => void
+  /** Reads the file from disk for the concurrent-write guard. Defaults to readFileSync. */
+  diskRead?: (path: string) => string
   /** Called with the original text right before it is replaced. */
   backup?: (path: string, content: string) => void
+}
+
+/**
+ * Refuse to write if another process changed the file since we read it. When
+ * `writeFile` is injected (tests / in-memory use) there is no real disk file to
+ * guard, so this is a no-op unless an explicit `diskRead` is supplied.
+ */
+function fileChangedOnDisk(deps: WriteModelsDeps, original: string): boolean {
+  if (!deps.diskRead && deps.writeFile) return false
+  try {
+    const diskRead = deps.diskRead ?? ((p: string) => readFileSync(p, "utf8"))
+    return diskRead(deps.jsoncPath) !== original
+  } catch {
+    // A file that vanished/changed unreadably is unsafe to overwrite blindly.
+    return true
+  }
 }
 
 /**
@@ -292,6 +310,9 @@ export function writeModels(deps: WriteModelsDeps): WriteModelsResult {
     }
   }
 
+  if (fileChangedOnDisk(deps, original)) {
+    return { status: "skipped", reason: "config file changed on disk while editing; refusing to overwrite" }
+  }
   deps.backup?.(deps.jsoncPath, original)
   write(deps.jsoncPath, next)
   return packageWarning
@@ -533,16 +554,23 @@ export function writeProvider(deps: WriteProviderDeps): WriteModelsResult {
       return { status: "skipped", reason: "could not locate providers object in the config text" }
     }
     const eol = newlineOf(original)
-    const indent = indentOf(original, providers.open + 1)
+    // Indent relative to the `providers` line, not the (possibly empty) line
+    // just after `{`, so a freshly inserted block is never flush-left.
+    const indent = `${indentOf(original, providers.open)}  `
     const pkg = isVersion(deps.packageVersion) ? packageSpec(deps.packageVersion) : packageSpec("2.0.90")
+    // Only append a comma when the object already has a member; appending one
+    // to an empty `{}` yields `},}}` which is only "valid" because trailing
+    // commas get blanked out — two bugs cancelling each other.
+    const inner = bare.slice(providers.open + 1, providers.close)
+    const hadMembers = skipSpace(bare, providers.open + 1) < providers.close && inner.trim().length > 0
     const block =
-      `${eol}${indent}  ${JSON.stringify(deps.providerId)}: {` +
-      `${eol}${indent}    "name": ${JSON.stringify(deps.providerId)},` +
-      `${eol}${indent}    "package": ${JSON.stringify(pkg)},` +
-      `${eol}${indent}    "compatibility": { "reasoningField": "reasoning_content" },` +
-      `${eol}${indent}    "settings": { "baseURL": ${JSON.stringify(baseURL)}, "apiKey": "" },` +
-      `${eol}${indent}    "models": {}` +
-      `${eol}${indent}  },`
+      `${eol}${indent}${JSON.stringify(deps.providerId)}: {` +
+      `${eol}${indent}  "name": ${JSON.stringify(deps.providerId)},` +
+      `${eol}${indent}  "package": ${JSON.stringify(pkg)},` +
+      `${eol}${indent}  "compatibility": { "reasoningField": "reasoning_content" },` +
+      `${eol}${indent}  "settings": { "baseURL": ${JSON.stringify(baseURL)}, "apiKey": "" },` +
+      `${eol}${indent}  "models": {}` +
+      `${eol}${indent}}${hadMembers ? "," : ""}`
     text = `${original.slice(0, providers.open + 1)}${block}${original.slice(providers.open + 1)}`
   }
 
@@ -569,6 +597,21 @@ export function writeProvider(deps: WriteProviderDeps): WriteModelsResult {
   })
   if (final.status === "skipped") return final
   if (final.status === "written") {
+    // Final gate: the new provider must land under `providers` alongside the
+    // originals — never somewhere else in the file.
+    const originalKeys = Object.keys(
+      (((JSON.parse(stripComments(original)) as { providers?: Record<string, unknown> }).providers) ?? {}),
+    )
+    const renderedKeys = Object.keys(
+      (((JSON.parse(stripComments(committed)) as { providers?: Record<string, unknown> }).providers) ?? {}),
+    )
+    const expected = [...originalKeys, deps.providerId].sort().join("\u0000")
+    if (renderedKeys.sort().join("\u0000") !== expected) {
+      return { status: "skipped", reason: "provider block did not land under providers; refusing to write" }
+    }
+    if (fileChangedOnDisk(deps, original)) {
+      return { status: "skipped", reason: "config file changed on disk while editing; refusing to overwrite" }
+    }
     deps.backup?.(deps.jsoncPath, original)
     write(deps.jsoncPath, committed)
   }

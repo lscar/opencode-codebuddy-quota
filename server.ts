@@ -6,13 +6,15 @@ import { fetchCatalog } from "./src/server/catalog"
 import { loadConfig, opencodeConfigPath } from "./src/server/config"
 import { writeProvider } from "./src/server/config-writer"
 import { createDedupedLogger } from "./src/server/logger"
+import { createLoginGate } from "./src/server/login-gate"
 import { getAuthState, openBrowser, pollToken } from "./src/server/login"
 import { buildModels } from "./src/server/model-info"
 import { readModelsDevCatalog } from "./src/server/models-dev"
 import { latestTaggedVersion } from "./src/server/package-version"
 import { createProxy } from "./src/server/proxy"
 import { createQuotaSource } from "./src/server/quota-source"
-import { currentSite, siteInfo } from "./src/server/site-state"
+import { resolveSite } from "./src/server/site-select"
+import { siteInfo } from "./src/server/site-state"
 import { createTokenStore } from "./src/server/token-store"
 import { fetchUpstream } from "./src/server/upstream"
 import { toWireReading } from "./src/server/wire"
@@ -111,28 +113,32 @@ export default Plugin.define({
     }
     void importModels()
 
+    const loginGate = createLoginGate()
+
     const registration = await ctx.rpc.register(CodebuddyQuota, {
       read: async (input, context) => {
-        const state = store.all()
         const requested = (input as { site?: Site } | undefined)?.site
-        const site = requested ?? currentSite(state)
+        const site = resolveSite(store, requested, (m) => log(m))
+        const state = store.all()
         const reading = await source.read(site, context.signal)
         return toWireReading(reading, { site, sites: siteInfo(state).sites })
       },
       login: async (input) => {
         const site = (input as { site: Site }).site
-        try {
-          const { state, authUrl } = await getAuthState(site)
-          openBrowser(authUrl)
-          const auth = await pollToken(site, state)
-          store.archive(auth)
-          log(`${site} login complete`)
-          return { ok: true, error: null }
-        } catch (error) {
-          const message = String((error as Error)?.message ?? error)
-          log(`${site} login failed: ${message}`)
-          return { ok: false, error: message }
-        }
+        return loginGate.run(site, async () => {
+          try {
+            const { state, authUrl } = await getAuthState(site)
+            openBrowser(authUrl)
+            const auth = await pollToken(site, state)
+            store.archive(auth)
+            log(`${site} login complete`)
+            return { ok: true, error: null }
+          } catch (error) {
+            const message = String((error as Error)?.message ?? error)
+            log(`${site} login failed: ${message}`)
+            return { ok: false, error: message }
+          }
+        })
       },
     })
 
