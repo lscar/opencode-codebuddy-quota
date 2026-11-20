@@ -1,0 +1,47 @@
+{
+  "name": "opencode-codebuddy-quota-v2",
+  "version": "0.1.0",
+  "description": "OpenCode plugin: dual-site (CN/INTL) CodeBuddy providers with dynamic JWT and a quota capsule that switches sites",
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "bun": ">=1.4.0"
+  },
+  "files": [
+    "server.ts",
+    "rpc.ts",
+    "src",
+    "config.default.json",
+    "dist"
+  ],
+  "exports": {
+    ".": "./server.ts",
+    "./rpc": "./rpc.ts",
+    "./gui-experimental": "./dist/gui-experimental.cjs"
+  },
+  "scripts": {
+    "typecheck": "bunx tsc --noEmit",
+    "test": "bun test",
+    "check": "bun run typecheck && bun test",
+    "build": "bun run build:gui",
+    "build:gui": "vite build",
+    "build:server": "bun -e \"console.log('server runs straight from TypeScript; bun install is all it needs')\"",
+    "prepublishOnly": "bun run check && bun run build:gui"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lscar/opencode-codebuddy-quota.git"
+  },
+  "homepage": "https://github.com/lscar/opencode-codebuddy-quota#readme",
+  "bugs": "https://github.com/lscar/opencode-codebuddy-quota/issues",
+  "dependencies": {
+    "@opencode/plugin": "2.2.5"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.4",
+    "solid-js": "^1.9.0",
+    "typescript": "5",
+    "vite": "^8.0.0",
+    "vite-plugin-solid": "^2.11.0"
+  }
+}
