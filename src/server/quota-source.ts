@@ -1,9 +1,9 @@
+import type { Site } from "../shared"
 import type { UpstreamReading } from "./upstream"
 
 /**
  * A reading plus the freshness verdict. `fetchedAt` is null only when nothing
- * has ever been read successfully — every numeric field is null then, so a
- * caller can tell "no data" from "stale data" without a separate flag.
+ * has ever been read successfully — every numeric field is null then.
  */
 export interface Reading {
   remaining: number | null
@@ -22,11 +22,12 @@ export interface Reading {
 }
 
 export interface QuotaSource {
-  read(signal?: AbortSignal): Promise<Reading>
+  read(site: Site, signal?: AbortSignal): Promise<Reading>
 }
 
 export interface QuotaSourceDeps {
-  fetchUpstream: (signal?: AbortSignal) => Promise<UpstreamReading>
+  /** Site-based fetch callback; the server wraps it over store.ensureFresh + fetchUpstream. */
+  readForSite: (site: Site, signal?: AbortSignal) => Promise<UpstreamReading>
   now?: () => number
   minRefreshMs?: number
 }
@@ -34,101 +35,63 @@ export interface QuotaSourceDeps {
 export const MIN_REFRESH_MS = 30_000
 
 const EMPTY: Reading = {
-  remaining: null,
-  used: null,
-  total: null,
-  cycleStart: null,
-  cycleEnd: null,
-  resetAt: null,
-  fetchedAt: null,
-  stale: false,
-  error: null,
-  cached: false,
-  ageSeconds: null,
+  remaining: null, used: null, total: null,
+  cycleStart: null, cycleEnd: null, resetAt: null,
+  fetchedAt: null, stale: false, error: null, cached: false, ageSeconds: null,
 }
 
-/**
- * One reading shared by every window.
- *
- * The cache exists to bound how often the upstream is asked, not to make a
- * refresh feel instant: an explicit "refresh" in the UI still lands here, and
- * inside `minRefreshMs` it gets the cached answer. Concurrent readers share one
- * in-flight call so several windows opening at once cost one request.
- *
- * A failure is never cached — otherwise a 30-second window of "key missing"
- * would hide a key the user just fixed.
- */
+interface SiteState {
+  cached: { reading: UpstreamReading; at: number } | null
+  failedAt: number | null
+  lastError: string | null
+  inflight: Promise<Reading> | null
+}
+
+const newState = (): SiteState => ({ cached: null, failedAt: null, lastError: null, inflight: null })
+
+/** Per-site cache: one broken site cannot starve the other. */
 export function createQuotaSource(deps: QuotaSourceDeps): QuotaSource {
   const now = deps.now ?? Date.now
   const minRefreshMs = deps.minRefreshMs ?? MIN_REFRESH_MS
-
-  let cached: { reading: UpstreamReading; at: number } | null = null
-  // A failure is not cached as a value, but its time is: while the upstream is
-  // down every hover and every window would otherwise start its own retry, and
-  // with several windows open that turns one broken endpoint into a flood.
-  let failedAt: number | null = null
-  let lastError: string | null = null
-  let inflight: Promise<Reading> | null = null
+  const states: Record<Site, SiteState> = { cn: newState(), intl: newState() }
 
   const ageOf = (at: number) => Math.max(0, Math.round((now() - at) / 1000))
-
-  const fresh = (reading: UpstreamReading): Reading => ({
-    ...reading,
-    stale: false,
-    error: null,
-    cached: false,
-    ageSeconds: 0,
+  const fresh = (r: UpstreamReading): Reading => ({ ...r, stale: false, error: null, cached: false, ageSeconds: 0 })
+  const fromCache = (e: { reading: UpstreamReading; at: number }): Reading => ({
+    ...e.reading, stale: false, error: null, cached: true, ageSeconds: ageOf(e.at),
   })
+  const fallback = (state: SiteState, error: string): Reading =>
+    state.cached
+      ? { ...state.cached.reading, stale: true, error, cached: false, ageSeconds: ageOf(state.cached.at) }
+      : { ...EMPTY, stale: true, error }
 
-  // A cache hit still carries the numbers, but says so, so the GUI never labels
-  // a 25-second-old figure as live.
-  const fromCache = (entry: { reading: UpstreamReading; at: number }): Reading => ({
-    ...entry.reading,
-    stale: false,
-    error: null,
-    cached: true,
-    ageSeconds: ageOf(entry.at),
-  })
-
-  // The last good numbers survive a failed refresh so the GUI can show "stale"
-  // with the real figure instead of blanking out.
-  const fallback = (error: string): Reading =>
-    cached
-      ? { ...cached.reading, stale: true, error, cached: false, ageSeconds: ageOf(cached.at) }
-      : { ...EMPTY, stale: true, error: error }
-
-  const load = async (signal?: AbortSignal): Promise<Reading> => {
+  const load = async (site: Site, state: SiteState, signal?: AbortSignal): Promise<Reading> => {
     try {
-      const reading = await deps.fetchUpstream(signal)
-      cached = { reading, at: now() }
-      failedAt = null
-      lastError = null
+      const reading = await deps.readForSite(site, signal)
+      state.cached = { reading, at: now() }
+      state.failedAt = null
+      state.lastError = null
       return fresh(reading)
     } catch (error) {
       const message = String((error as Error)?.message ?? error)
-      failedAt = now()
-      lastError = message
-      return fallback(message)
+      state.failedAt = now()
+      state.lastError = message
+      return fallback(state, message)
     }
   }
 
   return {
-    async read(signal?: AbortSignal) {
-      // A signal that is already cancelled must not start or join any work.
-      if (signal?.aborted) return fallback(String(signal.reason ?? "aborted"))
-
-      if (cached && now() - cached.at < minRefreshMs) return fromCache(cached)
-      if (failedAt !== null && now() - failedAt < minRefreshMs) {
-        return fallback(lastError ?? "upstream unavailable")
+    async read(site, signal) {
+      const state = states[site]
+      if (signal?.aborted) return fallback(state, String(signal.reason ?? "aborted"))
+      if (state.cached && now() - state.cached.at < minRefreshMs) return fromCache(state.cached)
+      if (state.failedAt !== null && now() - state.failedAt < minRefreshMs) {
+        return fallback(state, state.lastError ?? "upstream unavailable")
       }
-      // Set before awaiting so a second caller in the same tick joins this call
-      // rather than starting another.
-      if (!inflight) {
-        inflight = load(signal).finally(() => {
-          inflight = null
-        })
+      if (!state.inflight) {
+        state.inflight = load(site, state, signal).finally(() => { state.inflight = null })
       }
-      return inflight
+      return state.inflight
     },
   }
 }

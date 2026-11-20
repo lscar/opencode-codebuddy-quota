@@ -1,12 +1,5 @@
-/**
- * The CodeBuddy enterprise usage endpoint. copilot.tencent.com and
- * www.codebuddy.cn are two entry points to the same service; the former is what
- * the official CLI and the open-platform docs use, so it is the safer default.
- * www.codebuddy.ai is a separate backend — do not mix it in.
- */
-const UPSTREAM = "https://copilot.tencent.com/v2/billing/meter/get-enterprise-user-usage"
-
-export const KEY_ENV = "OPENCODE_CODEBUDDY_API_KEY"
+import { apiHeaders } from "./headers"
+import type { SiteAuth } from "./login"
 
 export interface UpstreamReading {
   remaining: number
@@ -19,37 +12,23 @@ export interface UpstreamReading {
 }
 
 export interface FetchUpstreamOptions {
-  key: string
+  auth: SiteAuth
   signal?: AbortSignal
   fetchImpl?: typeof fetch
   now?: () => number
 }
 
 /**
- * The one place the credential is read. A future config file changes only this
- * function, not the callers.
- */
-export function readApiKey(): string {
-  return (process.env[KEY_ENV] ?? "").trim()
-}
-
-/**
- * Upstream answers with `credit` (used) and `limitNum` (this cycle's total), so
- * `remaining` has to be derived here — a client reading a single JSON path
- * could not subtract.
+ * Fetch the site's cycle usage with its JWT. The endpoint host is `usageHost`,
+ * while `x-domain` stays the endpoint host from `apiHeaders` (never the realm
+ * domain — that triggers 12403).
  */
 export async function fetchUpstream(opts: FetchUpstreamOptions): Promise<UpstreamReading> {
-  const key = opts.key.trim()
-  if (!key) throw new Error(`${KEY_ENV} is not set`)
-
   const doFetch = opts.fetchImpl ?? fetch
-  const response = await doFetch(UPSTREAM, {
+  const url = `${opts.auth.usageHost}/v2/billing/meter/get-enterprise-user-usage`
+  const response = await doFetch(url, {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${key}`,
-      "Content-Type": "application/json",
-      Accept: "application/json",
-    },
+    headers: { ...apiHeaders(opts.auth), "Content-Type": "application/json" },
     body: "{}",
     signal: opts.signal,
   })
@@ -72,7 +51,6 @@ export async function fetchUpstream(opts: FetchUpstreamOptions): Promise<Upstrea
 
   const at = opts.now ? opts.now() : Date.now()
   return {
-    // Clamped so an overrun reads as zero left rather than a negative balance.
     remaining: Math.max(0, total - used),
     used,
     total,
