@@ -19,6 +19,8 @@ import { isVersion, packageSpec, PROVIDER_ID } from "./package-spec"
 
 export interface WriteModelsDeps {
   jsoncPath: string
+  /** Which provider's `models` block to edit. Defaults to the legacy provider. */
+  providerId?: string
   models: readonly ImportedModel[]
   /** When set, the provider's `package` version is moved to this value. */
   packageVersion?: string | null
@@ -218,6 +220,7 @@ function indentOf(text: string, at: number): string {
  * configuration.
  */
 export function writeModels(deps: WriteModelsDeps): WriteModelsResult {
+  const providerId = deps.providerId ?? PROVIDER_ID
   const read = deps.readFile ?? ((p: string) => readFileSync(p, "utf8"))
   const write = deps.writeFile ?? ((p: string, c: string) => writeFileSync(p, c, "utf8"))
 
@@ -233,13 +236,13 @@ export function writeModels(deps: WriteModelsDeps): WriteModelsResult {
     return { status: "skipped", reason: "config file is not valid JSON/JSONC" }
   }
 
-  const provider = locateProvider(bare)
+  const provider = locateProvider(bare, providerId)
   if (!provider) {
-    return { status: "skipped", reason: `could not locate providers.${PROVIDER_ID} in the config text` }
+    return { status: "skipped", reason: `could not locate providers.${providerId} in the config text` }
   }
   const modelsRange = locateModelsBlock(bare, provider)
   if (!modelsRange) {
-    return { status: "skipped", reason: `could not locate providers.${PROVIDER_ID}.models in the config text` }
+    return { status: "skipped", reason: `could not locate providers.${providerId}.models in the config text` }
   }
 
   const modelsById: Record<string, unknown> = {}
@@ -275,7 +278,7 @@ export function writeModels(deps: WriteModelsDeps): WriteModelsResult {
   if (!rendered) {
     return { status: "skipped", reason: "rendered config would not parse; refusing to write" }
   }
-  const renderedProvider = (rendered as { providers?: Record<string, unknown> }).providers?.[PROVIDER_ID] as
+  const renderedProvider = (rendered as { providers?: Record<string, unknown> }).providers?.[providerId] as
     | { models?: unknown; package?: unknown }
     | undefined
   const renderedIds = Object.keys((renderedProvider?.models as Record<string, unknown>) ?? {})
@@ -326,11 +329,11 @@ interface ObjectRange {
  * providers' string values, and splicing there would drop the models into the
  * wrong provider.
  */
-function locateProvider(bare: string): ObjectRange | null {
+function locateProvider(bare: string, providerId: string = PROVIDER_ID): ObjectRange | null {
   const root = objectAt(bare, skipSpace(bare, 0))
   if (!root) return null
   const providers = memberObject(bare, root.open, "providers")
-  return providers && memberObject(bare, providers.open, PROVIDER_ID)
+  return providers && memberObject(bare, providers.open, providerId)
 }
 
 /**
@@ -481,4 +484,93 @@ function findMember(text: string, at: number, key: string): Member | null {
 function memberObject(text: string, at: number, key: string): ObjectRange | null {
   const member = findMember(text, at, key)
   return member?.isObject ? { open: member.valueAt, close: containerEnd(text, member.valueAt)![0] } : null
+}
+
+export interface WriteProviderDeps extends WriteModelsDeps {
+  providerId: "codebuddy-cn" | "codebuddy-intl"
+  /** Port the local proxy listens on; baked into the provider's baseURL. */
+  proxyPort?: number
+  backup?: (path: string, content: string) => void
+}
+
+/**
+ * Create (or update) a v2 provider. When the block is absent, a complete provider
+ * object is inserted into `providers` — baseURL points at the local proxy path for
+ * this site — then the models are written by the same text-level path as before.
+ * The legacy `codebuddy` block is never located or edited.
+ */
+export function writeProvider(deps: WriteProviderDeps): WriteModelsResult {
+  const read = deps.readFile ?? ((p: string) => readFileSync(p, "utf8"))
+  const write = deps.writeFile ?? ((p: string, c: string) => writeFileSync(p, c, "utf8"))
+  let original: string
+  try {
+    original = read(deps.jsoncPath)
+  } catch {
+    return { status: "skipped", reason: "config file could not be read" }
+  }
+
+  const bare = stripComments(original)
+  if (!isJsonObject(bare)) {
+    return { status: "skipped", reason: "config file is not valid JSON/JSONC" }
+  }
+
+  // An explicitly provided package version must be valid; never silently fall
+  // back, or a stray value could reach the provider's `package` spec downstream.
+  if (deps.packageVersion !== undefined && deps.packageVersion !== null && !isVersion(deps.packageVersion)) {
+    return { status: "skipped", reason: "invalid package version" }
+  }
+
+  const port = deps.proxyPort ?? 7688
+  const site = deps.providerId === "codebuddy-intl" ? "intl" : "cn"
+  const baseURL = `http://127.0.0.1:${port}/${site}/v2`
+
+  let text = original
+  if (!locateProvider(bare, deps.providerId)) {
+    // Locate the `providers` object and insert a new member just inside it.
+    const root = objectAt(bare, skipSpace(bare, 0))
+    const providers = root && memberObject(bare, root.open, "providers")
+    if (!providers) {
+      return { status: "skipped", reason: "could not locate providers object in the config text" }
+    }
+    const eol = newlineOf(original)
+    const indent = indentOf(original, providers.open + 1)
+    const pkg = isVersion(deps.packageVersion) ? packageSpec(deps.packageVersion) : packageSpec("2.0.90")
+    const block =
+      `${eol}${indent}  ${JSON.stringify(deps.providerId)}: {` +
+      `${eol}${indent}    "name": ${JSON.stringify(deps.providerId)},` +
+      `${eol}${indent}    "package": ${JSON.stringify(pkg)},` +
+      `${eol}${indent}    "compatibility": { "reasoningField": "reasoning_content" },` +
+      `${eol}${indent}    "settings": { "baseURL": ${JSON.stringify(baseURL)}, "apiKey": "" },` +
+      `${eol}${indent}    "models": {}` +
+      `${eol}${indent}  },`
+    text = `${original.slice(0, providers.open + 1)}${block}${original.slice(providers.open + 1)}`
+  }
+
+  if (text === original) {
+    // Provider exists: delegate straight to the models writer.
+    return writeModels({
+      ...deps,
+      providerId: deps.providerId,
+      readFile: () => original,
+      writeFile: deps.writeFile,
+      backup: deps.backup,
+    })
+  }
+
+  // Freshly inserted provider: write its models into the intermediate text, then
+  // commit once. The writer callback captures the rendered text.
+  let committed = ""
+  const final = writeModels({
+    ...deps,
+    providerId: deps.providerId,
+    readFile: () => text,
+    writeFile: (_p, c) => { committed = c },
+    backup: undefined,
+  })
+  if (final.status === "skipped") return final
+  if (final.status === "written") {
+    deps.backup?.(deps.jsoncPath, original)
+    write(deps.jsoncPath, committed)
+  }
+  return final
 }

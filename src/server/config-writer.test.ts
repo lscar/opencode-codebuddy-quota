@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test"
 import type { ImportedModel } from "./model-info"
-import { stripComments, writeModels } from "./config-writer"
+import { stripComments, writeModels, writeProvider } from "./config-writer"
 
 const model = (id: string, over: Partial<ImportedModel> = {}): ImportedModel => ({
   id,
@@ -59,6 +59,73 @@ const run = (models: ImportedModel[], config = CONFIG) => {
 
 /** The written text keeps its comments, so it is read back the same way it was written. */
 const parse = (text: string) => JSON.parse(stripComments(text))
+
+describe("writeProvider", () => {
+  const runProvider = (providerId: "codebuddy-cn" | "codebuddy-intl", over: Record<string, unknown> = {}) => {
+    let written = ""
+    const backups: string[] = []
+    const result = writeProvider({
+      jsoncPath: "opencode.jsonc",
+      providerId,
+      models: [model("gpt-6-astra")],
+      readFile: () => CONFIG,
+      writeFile: (_p, c) => { written = c },
+      backup: (_p, c) => { backups.push(c) },
+      ...over,
+    })
+    return { result, written, backups }
+  }
+
+  it("creates a full codebuddy-intl block without touching the legacy codebuddy block", () => {
+    const { result, written } = runProvider("codebuddy-intl")
+    expect(result.status).toBe("written")
+    const cfg = parse(written)
+    const intl = cfg.providers["codebuddy-intl"]
+    expect(intl).toBeDefined()
+    expect(intl.settings.baseURL).toBe("http://127.0.0.1:7688/intl/v2")
+    expect(intl.settings.apiKey).toBeDefined()
+    expect(intl.compatibility.reasoningField).toBe("reasoning_content")
+    expect(intl.package).toBeDefined()
+    expect(Object.keys(intl.models)).toEqual(["gpt-6-astra"])
+    // Legacy block is byte-for-byte intact.
+    const before = parse(CONFIG).providers.codebuddy
+    expect(cfg.providers.codebuddy).toEqual(before)
+  })
+
+  it("uses the cn baseURL path for codebuddy-cn", () => {
+    const { written } = runProvider("codebuddy-cn")
+    expect(parse(written).providers["codebuddy-cn"].settings.baseURL).toBe("http://127.0.0.1:7688/cn/v2")
+  })
+
+  it("keeps stripComments length invariant", () => {
+    expect(stripComments(CONFIG).length).toBe(CONFIG.length)
+  })
+
+  it("skips on an invalid package version without writing", () => {
+    let wrote = false
+    const { result } = runProvider("codebuddy-intl", {
+      packageVersion: "not-a-version",
+      writeFile: () => { wrote = true },
+    })
+    expect(result.status).toBe("skipped")
+    expect(wrote).toBe(false)
+  })
+
+  it("only triggers backup when a change was written", () => {
+    const first = runProvider("codebuddy-intl")
+    expect(first.backups.length).toBe(1)
+    // A second run against the already-written content: provider now exists and models match.
+    let wrote2 = false
+    const result2 = writeProvider({
+      jsoncPath: "opencode.jsonc", providerId: "codebuddy-intl",
+      models: [model("gpt-6-astra")],
+      readFile: () => first.written,
+      writeFile: () => { wrote2 = true },
+    })
+    expect(result2.status).toBe("unchanged")
+    expect(wrote2).toBe(false)
+  })
+})
 
 describe("writeModels", () => {
   it("reuses the file's own line ending", () => {

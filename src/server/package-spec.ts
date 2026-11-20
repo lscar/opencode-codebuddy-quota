@@ -9,6 +9,10 @@
 
 export const PROVIDER_ID = "codebuddy"
 
+/** New v2 provider ids. Kept separate from the legacy `codebuddy` id. */
+export const PROVIDER_IDS = ["codebuddy-cn", "codebuddy-intl"] as const
+export type ProviderId = (typeof PROVIDER_IDS)[number]
+
 export const PACKAGE_PREFIX = "aisdk:"
 export const PACKAGE_NAME = "@ai-sdk/openai-compatible"
 
