@@ -1,7 +1,11 @@
+import type { Site, SiteInfo } from "../shared"
+
 export type QuotaStatus = "ok" | "cached" | "stale" | "error"
 
 export interface Quota {
   status: QuotaStatus
+  site: Site
+  sites: SiteInfo[]
   remaining: number | null
   used: number | null
   total: number | null
@@ -43,9 +47,16 @@ export function parseLocalTime(value: unknown): number | null {
   return Number.isFinite(t) ? t : null
 }
 
+const DEFAULT_SITES: SiteInfo[] = [
+  { site: "cn", available: false, accounts: [], activeId: null },
+  { site: "intl", available: false, accounts: [], activeId: null },
+]
+
 function empty(status: QuotaStatus, error: string | null): Quota {
   return {
     status,
+    site: "cn",
+    sites: DEFAULT_SITES,
     remaining: null,
     used: null,
     total: null,
@@ -131,9 +142,17 @@ export function normalizeQuota(payload: unknown, ctx: NormalizeContext): Quota {
   const status: QuotaStatus =
     data.stale === true ? "stale" : data.cached === true ? "cached" : "ok"
   const ageSeconds = num(data.ageSeconds)
+  const site: Site = data.site === "intl" ? "intl" : "cn"
+  const sites: SiteInfo[] = Array.isArray(data.sites)
+    ? (data.sites as SiteInfo[]).filter(
+        (s) => s && (s.site === "cn" || s.site === "intl") && Array.isArray(s.accounts),
+      )
+    : DEFAULT_SITES
 
   return {
     status,
+    site,
+    sites,
     remaining,
     used,
     total,

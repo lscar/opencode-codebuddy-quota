@@ -29,7 +29,8 @@ export default Plugin.define({
             <QuotaDialog
               quota={live()}
               ui={ctx.ui}
-              onRefresh={() => store.refresh({ force: true })}
+              onRefresh={(site) => store.refresh({ force: true, site })}
+              onLogin={(site) => store.login(site)}
               close={dialog.close}
             />
           )
@@ -41,8 +42,11 @@ export default Plugin.define({
     // Hover is the main way this refreshes: the background timer is only a safety
     // net, so pointing at the capsule pulls a reading that is older than a minute.
     const onHover = () => {
-      void store.refresh({ maxAgeMs: HOVER_MIN_AGE_MS })
+      void store.refresh({ maxAgeMs: HOVER_MIN_AGE_MS, site: store.read().site })
     }
+    const SITE_LABEL = { cn: "国内站", intl: "国际站" } as const
+    // Any site needing login shows an amber dot outside the capsule.
+    const needsLogin = () => store.read().sites.some((s) => !s.available)
 
     // plan B: the capsule lives on the session header row, the only surface the
     // side-tabs layout leaves a plugin. See the design notes for why.
@@ -58,16 +62,17 @@ export default Plugin.define({
           type="button"
           title={
             remainingShare(quota()) === null
-              ? "CodeBuddy 额度：暂不可用"
-              : `CodeBuddy 额度：剩余 ${formatPct(remainingShare(quota()))}`
+              ? `CodeBuddy 额度 · ${SITE_LABEL[quota().site]}：暂不可用（点击查看/登录）`
+              : `CodeBuddy 额度 · ${SITE_LABEL[quota().site]}：剩余 ${formatPct(remainingShare(quota()))}`
           }
           onMouseEnter={onHover}
           onFocus={onHover}
           onClick={openDetails}
           style={{
+            position: "relative",
             background: "transparent",
             border: "none",
-            padding: "2px 0",
+            padding: "2px 6px 2px 0",
             "margin-left": "auto",
             cursor: "pointer",
             "line-height": "0",
@@ -78,6 +83,20 @@ export default Plugin.define({
             color={paceColor(quota())}
             dim={quota().status === "stale"}
           />
+          {needsLogin() && (
+            <span
+              style={{
+                position: "absolute",
+                top: "0",
+                right: "0",
+                width: "9px",
+                height: "9px",
+                "border-radius": "50%",
+                background: "#ffb84d",
+                border: "1.5px solid transparent",
+              }}
+            />
+          )}
         </button>
       ),
     })

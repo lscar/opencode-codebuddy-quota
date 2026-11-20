@@ -37,6 +37,26 @@ describe("dialog display values", () => {
   })
 })
 
+describe("dialog site data", () => {
+  const sites = [
+    { site: "cn" as const, available: true, accounts: [{ id: "cn:u1", label: "u1" }], activeId: "cn:u1" },
+    { site: "intl" as const, available: false, accounts: [], activeId: null },
+  ]
+
+  it("normalizeQuota passes through site and sites", () => {
+    const v = normalizeQuota({ ...payload, site: "intl", sites }, { now: 0 })
+    expect(v.site).toBe("intl")
+    expect(v.sites).toEqual(sites)
+  })
+
+  it("defaults to cn with both sites unavailable when sites are missing", () => {
+    const v = q()
+    expect(v.site).toBe("cn")
+    expect(v.sites.map((s) => s.site)).toEqual(["cn", "intl"])
+    expect(v.sites.every((s) => !s.available)).toBe(true)
+  })
+})
+
 describe("dialog status copy", () => {
   it("distinguishes a cached answer from a live one", () => {
     expect(q().status).toBe("ok")

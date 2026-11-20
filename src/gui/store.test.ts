@@ -14,7 +14,10 @@ const okBody = {
   error: null,
 }
 
-const client = (impl: () => Promise<unknown>) => ({ read: impl })
+const client = (impl: (input?: { site?: "cn" | "intl" }) => Promise<unknown>, loginImpl?: (input: { site: "cn" | "intl" }) => Promise<unknown>) => ({
+  read: impl,
+  ...(loginImpl ? { login: loginImpl } : {}),
+})
 
 describe("readQuota", () => {
   it("maps a healthy answer to ok", async () => {
@@ -115,5 +118,45 @@ describe("createQuotaStore", () => {
     expect(store.read().status).toBe("error")
     expect(store.read().error).toContain("no server client")
     expect(store.read().remaining).toBeNull()
+  })
+
+  it("passes the requested site into the RPC read", async () => {
+    let seen: { site?: "cn" | "intl" } | undefined
+    const store = createQuotaStore(() =>
+      client(async (input) => {
+        seen = input
+        return { ...okBody, site: "intl" }
+      }),
+    )
+    await store.refresh({ force: true, site: "intl" })
+    expect(seen?.site).toBe("intl")
+    expect(store.read().site).toBe("intl")
+  })
+
+  it("login calls RPC login and refreshes on success", async () => {
+    let logged: "cn" | "intl" | null = null as "cn" | "intl" | null
+    let reads = 0
+    const store = createQuotaStore(() =>
+      client(
+        async () => { reads += 1; return okBody },
+        async ({ site }) => { logged = site; return { ok: true, error: null } },
+      ),
+    )
+    const ok = await store.login("intl")
+    expect(ok).toBe(true)
+    expect(logged).toBe("intl")
+    expect(reads).toBe(1)
+  })
+
+  it("login returns false and does not refresh when the RPC fails", async () => {
+    let reads = 0
+    const store = createQuotaStore(() =>
+      client(
+        async () => { reads += 1; return okBody },
+        async () => { throw new Error("browser cancelled") },
+      ),
+    )
+    expect(await store.login("cn")).toBe(false)
+    expect(reads).toBe(0)
   })
 })

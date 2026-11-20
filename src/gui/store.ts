@@ -1,14 +1,17 @@
+import type { Site } from "../shared"
 import { normalizeQuota, type Quota } from "./quota"
 
 /** The shape `ctx.client.rpc(CodebuddyQuota)` satisfies; kept loose so tests can fake it. */
 export interface QuotaClient {
-  read(input: Record<string, never>): Promise<unknown>
+  read(input: { site?: Site }): Promise<unknown>
+  login?(input: { site: Site }): Promise<unknown>
 }
 
 export interface QuotaStore {
   read(): Quota
   subscribe(listener: (q: Quota) => void): () => void
-  refresh(options?: { force?: boolean; maxAgeMs?: number }): Promise<void>
+  refresh(options?: { force?: boolean; maxAgeMs?: number; site?: Site }): Promise<void>
+  login(site: Site): Promise<boolean>
   start(): () => void
 }
 
@@ -20,6 +23,11 @@ const STALE_AFTER_RESUME_MS = 2 * 60_000
 
 const idle = (status: "error", error: string | null): Quota => ({
   status,
+  site: "cn",
+  sites: [
+    { site: "cn", available: false, accounts: [], activeId: null },
+    { site: "intl", available: false, accounts: [], activeId: null },
+  ],
   remaining: null,
   used: null,
   total: null,
@@ -47,11 +55,12 @@ export async function readQuota(opts: {
   client: QuotaClient
   fallback?: Quota | null
   now?: number
+  site?: Site
 }): Promise<Quota> {
   const now = opts.now ?? Date.now()
   let body: unknown
   try {
-    body = await opts.client.read({})
+    body = await opts.client.read(opts.site ? { site: opts.site } : {})
   } catch (error) {
     const message = String((error as Error)?.message ?? error)
     return opts.fallback
@@ -81,7 +90,7 @@ export function createQuotaStore(client: () => QuotaClient): QuotaStore {
    * `maxAgeMs` refreshes only when the last attempt is older than that, which is
    * how hover keeps working without spamming on every pointer move.
    */
-  const refresh = async (options: { force?: boolean; maxAgeMs?: number } = {}) => {
+  const refresh = async (options: { force?: boolean; maxAgeMs?: number; site?: Site } = {}) => {
     // One request at a time: without this, a forced refresh racing a hover refresh
     // can land out of order and let the older reading win.
     if (inflight) return inflight
@@ -97,7 +106,7 @@ export function createQuotaStore(client: () => QuotaClient): QuotaStore {
         let next: Quota
         try {
           // Read the client per request: it changes when the server restarts.
-          next = await readQuota({ client: client(), fallback: usable })
+          next = await readQuota({ client: client(), fallback: usable, site: options.site })
         } catch (error) {
           // `client()` itself can throw when the server client is unavailable,
           // which is the same situation as a rejected RPC call.
@@ -144,6 +153,18 @@ export function createQuotaStore(client: () => QuotaClient): QuotaStore {
       return () => listeners.delete(listener)
     },
     refresh,
+    async login(site) {
+      try {
+        const loginFn = client().login
+        if (!loginFn) return false
+        const result = (await loginFn({ site })) as { ok?: boolean } | null
+        const ok = result?.ok === true
+        if (ok) await refresh({ force: true, site })
+        return ok
+      } catch {
+        return false
+      }
+    },
     start,
   }
 }
