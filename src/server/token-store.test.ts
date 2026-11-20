@@ -86,6 +86,27 @@ describe("readCache / writeCache / cachePath", () => {
     expect(activeAccount(read, "cn")?.accessToken).toBe("a1")
   })
 
+  it("filters malformed account entries from the cache", () => {
+    const raw = JSON.stringify({
+      accounts: {
+        cn: [auth(), { id: "cn:bad", accessToken: "x" }],
+        intl: [{ id: "intl:bad", endpoint: "x" }],
+      },
+      activeId: { cn: "cn:u1", intl: "intl:bad" },
+      selected: "cn",
+    })
+    const read = readCache(() => raw)
+    expect(read.accounts.cn.length).toBe(1)
+    expect(read.accounts.intl.length).toBe(0)
+    expect(read.activeId.intl).toBe(null)
+  })
+
+  it("writes to a caller-supplied directory", () => {
+    let path = ""
+    writeCache(emptyCache(), (p) => { path = p }, "/custom/dir")
+    expect(path).toBe(join("/custom/dir", "codebuddy-quota-v2-auth.json"))
+  })
+
   it("migrates the old single-SiteAuth cn/intl format", () => {
     const old = JSON.stringify({
       cn: auth(),
@@ -139,6 +160,23 @@ describe("refreshSite", () => {
 })
 
 describe("createTokenStore.ensureFresh", () => {
+  it("does not re-refresh within the cooldown even for a short TTL", async () => {
+    let calls = 0
+    const fetchImpl = (async () => {
+      calls += 1
+      return new Response(JSON.stringify({ code: 0, data: {
+        accessToken: `a${calls}`, refreshToken: `r${calls}`, expiresIn: 100, refreshExpiresIn: 200,
+      } }), { status: 200, headers: { "content-type": "application/json" } })
+    }) as unknown as typeof fetch
+    const store = createTokenStore({
+      fetchImpl, now: () => 0, persist: () => {}, load: emptyCache,
+    })
+    store.archive(auth({ expiresAt: -1 }))
+    await store.ensureFresh("cn") // refresh once
+    await store.ensureFresh("cn") // still within 60s cooldown, no second refresh
+    expect(calls).toBe(1)
+  })
+
   it("marks refreshFailed on failure and clears it on success", async () => {
     let fail = true
     const fetchImpl = (async () => {

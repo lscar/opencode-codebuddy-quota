@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync } from "node:fs"
+import { chmodSync, readFileSync, writeFileSync } from "node:fs"
 import { homedir } from "node:os"
 import { join } from "node:path"
 import type { Site } from "../shared"
@@ -29,9 +29,32 @@ type ReadFile = () => string
 type WriteFile = (path: string, data: string) => void
 
 const defaultRead = (path: string): ReadFile => () => readFileSync(path, "utf8")
-const defaultWrite = (path: string): WriteFile => (p, data) => writeFileSync(p, data, { mode: 0o600 })
+const defaultWrite = (path: string): WriteFile => (p, data) => {
+  writeFileSync(p, data, { mode: 0o600 })
+  // `mode` only applies on create; tighten an existing (e.g. 0644) file too.
+  try { chmodSync(p, 0o600) } catch { /* no-op on platforms without POSIX modes */ }
+}
 
 const isSite = (v: unknown): v is Site => v === "cn" || v === "intl"
+
+/** Guard against a hand-corrupted cache entry with missing/ill-typed fields. */
+const isSiteAuth = (v: unknown): v is SiteAuth => {
+  if (typeof v !== "object" || v === null) return false
+  const a = v as Record<string, unknown>
+  return (
+    typeof a.id === "string" &&
+    typeof a.accessToken === "string" &&
+    typeof a.refreshToken === "string" &&
+    typeof a.expiresAt === "number" &&
+    typeof a.refreshExpiresAt === "number" &&
+    typeof a.uid === "string" &&
+    typeof a.endpoint === "string" &&
+    typeof a.usageHost === "string" &&
+    (a.enterpriseId === null || typeof a.enterpriseId === "string")
+  )
+}
+const filterAuths = (v: unknown): SiteAuth[] =>
+  Array.isArray(v) ? (v as unknown[]).filter(isSiteAuth) : []
 
 /** Read the cache, migrating the old flat `{ cn, intl, selected }` format. */
 export function readCache(readFile?: ReadFile): TokenCache {
@@ -54,21 +77,23 @@ export function readCache(readFile?: ReadFile): TokenCache {
   if (parsed.accounts && typeof parsed.accounts === "object") {
     const accounts = parsed.accounts as Record<string, unknown>
     const active = (parsed.activeId ?? {}) as Record<string, unknown>
-    const cn = Array.isArray(accounts.cn) ? (accounts.cn as SiteAuth[]) : []
-    const intl = Array.isArray(accounts.intl) ? (accounts.intl as SiteAuth[]) : []
+    const cn = filterAuths(accounts.cn)
+    const intl = filterAuths(accounts.intl)
     const selectSite = isSite(parsed.selected) ? parsed.selected : "cn"
-    const activeCn = typeof active.cn === "string" ? active.cn : (cn[0]?.id ?? null)
-    const activeIntl = typeof active.intl === "string" ? active.intl : (intl[0]?.id ?? null)
+    const pick = (listed: unknown, accounts: SiteAuth[]): string | null => {
+      const id = typeof listed === "string" ? listed : (accounts[0]?.id ?? null)
+      return id && accounts.some((a) => a.id === id) ? id : (accounts[0]?.id ?? null)
+    }
     return {
       accounts: { cn, intl },
-      activeId: { cn: activeCn, intl: activeIntl },
+      activeId: { cn: pick(active.cn, cn), intl: pick(active.intl, intl) },
       selected: selectSite,
     }
   }
 
   // Old format: { cn: SiteAuth|null, intl: SiteAuth|null, selected }
-  const cn = parsed.cn as SiteAuth | null | undefined
-  const intl = parsed.intl as SiteAuth | null | undefined
+  const cn = isSiteAuth(parsed.cn) ? parsed.cn : null
+  const intl = isSiteAuth(parsed.intl) ? parsed.intl : null
   const accounts: Record<Site, SiteAuth[]> = {
     cn: cn ? [cn] : [],
     intl: intl ? [intl] : [],
@@ -80,9 +105,10 @@ export function readCache(readFile?: ReadFile): TokenCache {
   }
 }
 
-export function writeCache(cache: TokenCache, writeFile?: WriteFile): void {
-  const target = writeFile ?? defaultWrite(cachePath())
-  target(cachePath(), JSON.stringify(cache, null, 2))
+export function writeCache(cache: TokenCache, writeFile?: WriteFile, dir?: string): void {
+  const path = cachePath(dir)
+  const target = writeFile ?? defaultWrite(path)
+  target(path, JSON.stringify(cache, null, 2))
 }
 
 /** The currently active account for a site; callers never handle 1 vs N. */
@@ -173,6 +199,8 @@ export function createTokenStore(deps: StoreDeps = {}): TokenStore {
   const persist = deps.persist ?? ((c: TokenCache) => writeCache(c))
   const inFlight: Partial<Record<Site, Promise<SiteAuth>>> = {}
   const refreshErrors: Record<Site, boolean> = { cn: false, intl: false }
+  const lastRefreshAt: Partial<Record<Site, number>> = {}
+  const nowOf = deps.now ?? Date.now
 
   const save = () => persist(cache)
 
@@ -194,13 +222,19 @@ export function createTokenStore(deps: StoreDeps = {}): TokenStore {
     ensureFresh: (site) => {
       const current = activeAccount(cache, site)
       if (!current) return Promise.reject(new Error(`no account for ${site}`))
-      if (!needsRefresh(current, (deps.now ?? Date.now)())) return Promise.resolve(current)
+      if (!needsRefresh(current, nowOf())) return Promise.resolve(current)
+      // Cooldown: a short-TTL token that is already inside the 5-minute window
+      // must not be refreshed again on every request right after a refresh.
+      if (lastRefreshAt[site] !== undefined && nowOf() - lastRefreshAt[site]! < 60_000) {
+        return Promise.resolve(current)
+      }
       const existing = inFlight[site]
       if (existing) return existing
       const task = refreshSite(current, deps)
         .then((next) => {
           cache = archive(cache, next)
           refreshErrors[site] = false
+          lastRefreshAt[site] = nowOf()
           save()
           return next
         })
