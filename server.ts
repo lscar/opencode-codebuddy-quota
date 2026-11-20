@@ -28,9 +28,16 @@ function anySignal(signals: AbortSignal[]): AbortSignal {
     if (signal.aborted) return AbortSignal.abort(signal.reason)
   }
   const controller = new AbortController()
-  for (const signal of signals) {
-    signal.addEventListener("abort", () => controller.abort(signal.reason), { once: true })
-  }
+  const listeners = signals.map((signal) => {
+    const handler = () => controller.abort(signal.reason)
+    signal.addEventListener("abort", handler, { once: true })
+    return { signal, handler }
+  })
+  // When one signal wins, detach from the others so a long-lived parent (e.g.
+  // context.signal) does not accumulate listeners across many requests.
+  controller.signal.addEventListener("abort", () => {
+    for (const { signal, handler } of listeners) signal.removeEventListener("abort", handler)
+  }, { once: true })
   return controller.signal
 }
 
@@ -57,7 +64,7 @@ export default Plugin.define({
     // Local reverse proxy: providers point here; the proxy injects the current
     // site's JWT on each request. Port conflicts are logged and non-fatal to the
     // rest of the panel.
-    const proxy = createProxy({ store })
+    const proxy = createProxy({ store, log })
     try {
       await proxy.start(PROXY_PORT)
       log(`local proxy listening on 127.0.0.1:${PROXY_PORT}`)
@@ -119,8 +126,11 @@ export default Plugin.define({
       read: async (input, context) => {
         const requested = (input as { site?: Site } | undefined)?.site
         const site = resolveSite(store, requested, (m) => log(m))
-        const state = store.all()
         const reading = await source.read(site, context.signal)
+        // Read the cache AFTER the refresh: ensureFresh may have rotated tokens
+        // and replaced the cache object. A pre-read snapshot would render a
+        // "needs login" tag alongside freshly returned quota numbers.
+        const state = store.all()
         return toWireReading(reading, { site, sites: siteInfo(state, (s) => store.refreshFailed(s)).sites })
       },
       login: async (input) => {

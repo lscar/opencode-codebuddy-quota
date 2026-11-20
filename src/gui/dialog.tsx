@@ -125,8 +125,13 @@ export function QuotaDialog(props: QuotaDialogProps): JSX.Element {
 
   const body = () => (
     <div style={{ "min-width": "340px" }}>
-      <div style={{ display: "flex", gap: "4px", "margin-bottom": "14px" }}>
+      <div style={{ display: "flex", gap: "4px", "margin-bottom": "10px" }}>
         {sites().map(tag)}
+      </div>
+      <div style={{ display: "flex", "align-items": "center", gap: "6px", "font-size": "10px",
+        color: fresh().color, "margin-bottom": "12px" }}>
+        <span style={{ width: "6px", height: "6px", "border-radius": "50%", background: fresh().color }} />
+        {fresh().text}
       </div>
 
       {unusable() ? (

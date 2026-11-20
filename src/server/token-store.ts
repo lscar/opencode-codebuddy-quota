@@ -224,8 +224,13 @@ export function createTokenStore(deps: StoreDeps = {}): TokenStore {
       if (!current) return Promise.reject(new Error(`no account for ${site}`))
       if (!needsRefresh(current, nowOf())) return Promise.resolve(current)
       // Cooldown: a short-TTL token that is already inside the 5-minute window
-      // must not be refreshed again on every request right after a refresh.
-      if (lastRefreshAt[site] !== undefined && nowOf() - lastRefreshAt[site]! < 60_000) {
+      // must not be refreshed again on every request right after a refresh —
+      // but never hand back a token that has actually expired.
+      if (
+        lastRefreshAt[site] !== undefined &&
+        nowOf() - lastRefreshAt[site]! < 60_000 &&
+        nowOf() < current.expiresAt
+      ) {
         return Promise.resolve(current)
       }
       const existing = inFlight[site]

@@ -36,6 +36,8 @@ export interface HandleRequestDeps {
   readBody?: (req: ProxyRequest) => Promise<string>
   /** Aborts when the client disconnects, so we stop the upstream SSE stream. */
   signal?: AbortSignal
+  /** Optional logger; errors are logged here, never echoed to the client body. */
+  log?: (message: string) => void
 }
 
 /** Force `stream:true` on the chat body so the upstream always answers with SSE. */
@@ -98,8 +100,9 @@ export async function handleRequest(
       signal: deps.signal,
     })
   } catch (err) {
+    deps.log?.(`proxy upstream error: ${String((err as Error)?.message ?? err)}`)
     res.status(502)
-    res.end(`upstream error: ${String((err as Error)?.message ?? err)}`)
+    res.end() // never echo internal error detail (host/path) to the caller
     return
   }
 
@@ -128,6 +131,7 @@ export interface ProxyServer {
 export function createProxy(deps: {
   store: TokenStore
   fetchImpl?: typeof fetch
+  log?: (message: string) => void
 }): ProxyServer {
   const server = createServer((incoming: IncomingMessage, outgoing: ServerResponse) => {
     const headers: Record<string, string> = {}
@@ -174,6 +178,7 @@ export function createProxy(deps: {
           fetchImpl: deps.fetchImpl,
           readBody: async () => text,
           signal: controller.signal,
+          log: deps.log,
         },
       ).catch((err) => {
         if (controller.signal.aborted) return

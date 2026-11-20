@@ -1,6 +1,8 @@
 import { describe, expect, it } from "bun:test"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
+import { buildModels } from "./model-info"
+import type { ModelsDevCatalog } from "./pricing"
 import { configDir, configPath, DEFAULT_CONFIG, loadConfig, opencodeConfigPath } from "./config"
 import { DEFAULT_PACKAGE_VERSION } from "./package-spec"
 
@@ -93,6 +95,41 @@ describe("loadConfig", () => {
     for (const alias of ["default-model", "fast-model", "balanced-model", "primary-model"]) {
       expect(DEFAULT_CONFIG.models[alias]).toBeUndefined()
     }
+  })
+
+  it("builds 21 priced models from the 26-id intl cli whitelist (end-to-end)", () => {
+    const cliIds = [
+      "default-model", "fast-model", "balanced-model", "primary-model", // 4 routing aliases
+      "hy4-preview", "hy3", "deepseek-v4.1-flash", "deepseek-v4.1-flash-sg",
+      "gpt-6-astra", "gpt-6.1-sol", "gpt-6-sol", "gpt-6-luna", "gpt-5.6-sol",
+      "gpt-5.6-terra", "gpt-5.6-luna", "gpt-5.5", "gpt-5.4", "grok-4.7",
+      "gemini-3.8-flash", "glm-5.3-flash", "glm-5.3", "glm-5.2",
+      "minimax-m3.1-flash", "kimi-k3.1-pro", "kimi-k3.1-pro-highspeed", "kimi-k3",
+    ]
+    expect(cliIds).toHaveLength(26)
+    const catalog = cliIds
+      .map((id) => DEFAULT_CONFIG.models[id])
+      .filter((m): m is { provider: string; model: string } => !!m)
+      .reduce<ModelsDevCatalog>((acc, m) => {
+        acc[m.provider] ??= { models: {} }
+        ;(acc[m.provider]!.models ??= {})[m.model] = {
+          cost: { text: { input: { price: 1 }, output: { price: 2 } } },
+        } as never
+        return acc
+      }, {} as ModelsDevCatalog)
+
+    const built = buildModels({
+      catalog: cliIds.map((id) => ({
+        id, name: id, credits: 0.1, imageInput: false,
+        efforts: [], defaultEffort: null,
+        maxInputTokens: 1000,
+      })) as never,
+      config: DEFAULT_CONFIG,
+      modelsDev: catalog,
+      log: () => {},
+    })
+    expect(built).toHaveLength(21)
+    expect(built.every((m) => m.cost.length > 0)).toBe(true)
   })
 
   it("ships a mapping that points every default model at its vendor", () => {

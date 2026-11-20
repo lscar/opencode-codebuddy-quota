@@ -102,6 +102,28 @@ describe("getAuthState", () => {
   })
 })
 
+describe("getAuthState retries", () => {
+  it("does not retry a 4xx", async () => {
+    let calls = 0
+    const fetchImpl = (async () => {
+      calls += 1
+      return new Response("unauthorized", { status: 401 })
+    }) as unknown as typeof fetch
+    await expect(getAuthState("cn", { fetchImpl, retries: 2 })).rejects.toThrow("401")
+    expect(calls).toBe(1)
+  })
+
+  it("retries a 5xx up to the limit", async () => {
+    let calls = 0
+    const fetchImpl = (async () => {
+      calls += 1
+      return new Response("server error", { status: 500 })
+    }) as unknown as typeof fetch
+    await expect(getAuthState("cn", { fetchImpl, retries: 2 })).rejects.toThrow()
+    expect(calls).toBe(3)
+  })
+})
+
 describe("pollToken", () => {
   it("keeps polling through 11217 pending then returns a SiteAuth", async () => {
     let n = 0

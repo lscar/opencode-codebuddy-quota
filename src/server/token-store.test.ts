@@ -160,6 +160,27 @@ describe("refreshSite", () => {
 })
 
 describe("createTokenStore.ensureFresh", () => {
+  it("refreshes even within cooldown if the token has actually expired", async () => {
+    let now = 0
+    let calls = 0
+    const fetchImpl = (async () => {
+      calls += 1
+      return new Response(JSON.stringify({ code: 0, data: {
+        // 20s TTL: expires before the 60s cooldown ends.
+        accessToken: `a${calls}`, refreshToken: `r${calls}`, expiresIn: 20, refreshExpiresIn: 200,
+      } }), { status: 200, headers: { "content-type": "application/json" } })
+    }) as unknown as typeof fetch
+    const store = createTokenStore({
+      fetchImpl, now: () => now, persist: () => {}, load: emptyCache,
+    })
+    store.archive(auth({ expiresAt: -1 }))
+    await store.ensureFresh("cn") // refresh #1, new token expires at 20000
+    now = 25000 // token expired, still within 60s cooldown
+    const next = await store.ensureFresh("cn")
+    expect(calls).toBe(2)
+    expect(next.expiresAt).toBe(45000) // 25000 + 20s
+  })
+
   it("does not re-refresh within the cooldown even for a short TTL", async () => {
     let calls = 0
     const fetchImpl = (async () => {

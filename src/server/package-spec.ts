@@ -7,9 +7,7 @@
  * spec, whose version it keeps current.
  */
 
-export const PROVIDER_ID = "codebuddy"
-
-/** New v2 provider ids. Kept separate from the legacy `codebuddy` id. */
+/** New v2 provider ids. The legacy `codebuddy` id is intentionally absent. */
 export const PROVIDER_IDS = ["codebuddy-cn", "codebuddy-intl"] as const
 export type ProviderId = (typeof PROVIDER_IDS)[number]
 

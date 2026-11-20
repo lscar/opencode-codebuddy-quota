@@ -112,12 +112,19 @@ export async function getAuthState(
   const retries = deps.retries ?? 2
   let lastErr: unknown
   for (let attempt = 0; attempt <= retries; attempt++) {
+    let res: Response
     try {
-      const res = await doFetch(url, { method: "POST", headers: NO_CREDENTIALS_HEADERS, body: "{}" })
-      // A 4xx is a real answer, not a transient network failure — don't retry it.
-      if (!res.ok && res.status < 500) {
-        throw new Error(`auth/state HTTP ${res.status}`)
-      }
+      res = await doFetch(url, { method: "POST", headers: NO_CREDENTIALS_HEADERS, body: "{}" })
+    } catch (err) {
+      lastErr = err
+      continue // network failure — retry
+    }
+    // A 4xx is a real answer, not a transient failure. It must bypass the retry
+    // loop entirely (a throw inside the try below would be swallowed by catch).
+    if (!res.ok && res.status < 500) {
+      throw new Error(`auth/state HTTP ${res.status}`)
+    }
+    try {
       const json = (await res.json()) as {
         code?: number
         data?: { state?: string; authUrl?: string }

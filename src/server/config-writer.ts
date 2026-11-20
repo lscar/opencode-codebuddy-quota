@@ -347,7 +347,7 @@ interface ObjectRange {
 }
 
 /**
- * Finds `providers.<PROVIDER_ID>`, walking the structure instead of searching
+ * Finds `providers.<providerId>`, walking the structure instead of searching
  * for the first `"codebuddy"`: that literal also appears inside other
  * providers' string values, and splicing there would drop the models into the
  * wrong provider.

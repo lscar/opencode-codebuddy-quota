@@ -148,6 +148,27 @@ describe("createQuotaStore", () => {
     expect(reads).toBe(1)
   })
 
+  it("keeps the user's last choice when sites are switched rapidly", async () => {
+    let release: () => void = () => {}
+    const sites: Array<"cn" | "intl"> = []
+    const store = createQuotaStore(() =>
+      client(async (input) => {
+        const s = input?.site ?? "cn"
+        sites.push(s)
+        if (s === "intl") await new Promise<void>((r) => { release = r })
+        return { ...okBody, site: s }
+      }),
+    )
+    // cn completes instantly; intl goes in-flight; user immediately clicks cn again.
+    await store.refresh({ force: true, site: "cn" })
+    const inFlight = store.refresh({ force: true, site: "intl" })
+    const last = store.refresh({ force: true, site: "cn" })
+    release()
+    await Promise.all([inFlight, last])
+    await new Promise((r) => setTimeout(r, 0))
+    expect(store.read().site).toBe("cn") // last choice wins, not silently dropped
+  })
+
   it("queues a different site requested during an in-flight refresh", async () => {
     let release: () => void = () => {}
     const sites: Array<"cn" | "intl"> = []

@@ -31,18 +31,28 @@ describe("upstreamUrl", () => {
   })
 })
 
-/** Minimal response double that accumulates writes. */
+/**
+ * Response double that models Node's writeHead: headers set before `status()`
+ * are captured exactly once; later setHeader calls are ignored (as Node throws).
+ */
 function resDouble(): ProxyResponse & { chunks: string[]; statusCode: number; headers: Record<string, string> } {
-  const state = { chunks: [] as string[], statusCode: 200, headers: {} as Record<string, string> }
+  const chunks: string[] = []
+  let statusCode = 200
+  const pending: Record<string, string> = {}
+  let written: Record<string, string> | null = null
   return {
-    ...state,
-    status(code: number) { state.statusCode = code },
-    setHeader(k: string, v: string) { state.headers[k.toLowerCase()] = v },
-    write(chunk: string | Uint8Array) { state.chunks.push(typeof chunk === "string" ? chunk : new TextDecoder().decode(chunk)) },
-    end(chunk?: string | Uint8Array) { if (chunk !== undefined) state.chunks.push(typeof chunk === "string" ? chunk : new TextDecoder().decode(chunk)) },
-    get chunks() { return state.chunks },
-    get statusCode() { return state.statusCode },
-    get headers() { return state.headers },
+    status(code: number) {
+      statusCode = code
+      written = { ...pending } // writeHead captures headers at this instant
+    },
+    setHeader(k: string, v: string) {
+      if (!written) pending[k.toLowerCase()] = v // after writeHead Node would throw
+    },
+    write(chunk: string | Uint8Array) { chunks.push(typeof chunk === "string" ? chunk : new TextDecoder().decode(chunk)) },
+    end(chunk?: string | Uint8Array) { if (chunk !== undefined) chunks.push(typeof chunk === "string" ? chunk : new TextDecoder().decode(chunk)) },
+    get chunks() { return chunks },
+    get statusCode() { return statusCode },
+    get headers() { return written ?? pending },
   }
 }
 
