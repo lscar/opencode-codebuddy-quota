@@ -67,8 +67,15 @@ export default Plugin.define({
     if (key.trim()) {
       try {
         const config = loadConfig()
+        // TODO(v2 Task 11): replace this key-based bootstrap with per-site JWT catalog
+        // fetch. Kept type-correct here only so intermediate commits compile.
+        const stubAuth = {
+          id: "cn:stub", accessToken: key, refreshToken: "", expiresAt: 0,
+          refreshExpiresAt: 0, uid: "", enterpriseId: null, realmDomain: "",
+          endpoint: "https://copilot.tencent.com", usageHost: "https://www.codebuddy.cn",
+        }
         const models = buildModels({
-          catalog: await fetchCatalog({ key }),
+          catalog: await fetchCatalog({ site: "cn", auth: stubAuth }),
           config,
           modelsDev: readModelsDevCatalog(),
           log,

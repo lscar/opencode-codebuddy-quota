@@ -13,7 +13,18 @@
     "hy4free": { "provider": "tencent-tokenhub", "model": "hy4" },
     "hy3": { "provider": "tencent-tokenhub", "model": "hy3" },
     "hy3-x": { "provider": "tencent-tokenhub", "model": "hy3" },
-    "space-bunny": { "provider": "minimax-cn", "model": "MiniMax-M3.1-Flash" }
+    "space-bunny": { "provider": "minimax-cn", "model": "MiniMax-M3.1-Flash" },
+    "gpt-6-astra": { "provider": "kunavo", "model": "gpt-6-astra" },
+    "gpt-6.1-sol": { "provider": "commandcode", "model": "gpt-6.1-sol" },
+    "gpt-6-sol": { "provider": "zerogpu", "model": "gpt-6-sol" },
+    "gpt-6-luna": { "provider": "zerogpu", "model": "gpt-6-luna" },
+    "gpt-5.6-luna": { "provider": "zerogpu", "model": "gpt-5.6-luna" },
+    "gpt-5.6-sol": { "provider": "zerogpu", "model": "gpt-5.6-sol" },
+    "grok-4.7": { "provider": "cheapaimodel", "model": "grok-4.7" },
+    "gemini-3.8-flash": { "provider": "google", "model": "gemini-3.8-flash" },
+    "glm-5.3": { "provider": "greenpt", "model": "glm-5.3" },
+    "kimi-k3.1-pro": { "provider": "wafer.ai", "model": "kimi-k3.1-pro" },
+    "kimi-k3": { "provider": "wafer.ai", "model": "kimi-k3" }
   },
   "excluded_models": ["space-bunny", "hy3", "hy3-x"],
   "package_version": "2.0.90"

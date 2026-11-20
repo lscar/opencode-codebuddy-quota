@@ -64,7 +64,7 @@ export function buildModels(deps: BuildModelsDeps): readonly ImportedModel[] {
   for (const model of deps.catalog) {
     if (excluded.has(model.id)) continue
     if (!config.models[model.id]) {
-      log(`${model.id} has no models entry in codebuddy-quota.json; not offered`)
+      log(`${model.id} has no models entry in codebuddy-quota-v2.json; not offered`)
       continue
     }
     kept.push(model)

@@ -7,6 +7,10 @@
  * absent from the allowlist must not be offered.
  */
 
+import type { Site } from "../shared"
+import { apiHeaders } from "./headers"
+import type { SiteAuth } from "./login"
+
 export const CONFIG_URL = "https://copilot.tencent.com/v3/config"
 
 /**
@@ -35,7 +39,8 @@ export interface CatalogModel {
 }
 
 export interface FetchCatalogDeps {
-  key: string
+  site: Site
+  auth: SiteAuth
   signal?: AbortSignal
   fetchImpl?: typeof fetch
   timeoutMs?: number
@@ -173,22 +178,14 @@ export function parseModelConfig(body: unknown): readonly CatalogModel[] {
  * whose error message names the `CLI/` marker so the cause is not a mystery.
  */
 export async function fetchCatalog(deps: FetchCatalogDeps): Promise<readonly CatalogModel[]> {
-  const key = deps.key.trim()
-  if (!key) throw new Error(`${"OPENCODE_CODEBUDDY_API_KEY"} is not set`)
-
   const fetchImpl = deps.fetchImpl ?? fetch
   const timeout = AbortSignal.timeout(deps.timeoutMs ?? DEFAULT_TIMEOUT_MS)
   const signal = deps.signal ? AbortSignal.any([deps.signal, timeout]) : timeout
+  const url = `${deps.auth.endpoint}/v3/config`
 
-  const response = await fetchImpl(CONFIG_URL, {
+  const response = await fetchImpl(url, {
     method: "GET",
-    headers: {
-      accept: "application/json",
-      "x-api-key": key,
-      "user-agent": REQUEST_USER_AGENT,
-      "x-product": PRODUCT_HEADER,
-      "x-ide-name": CLIENT_NAME,
-    },
+    headers: apiHeaders(deps.auth, { accept: "application/json" }),
     signal,
   })
 

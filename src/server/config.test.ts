@@ -96,6 +96,15 @@ describe("loadConfig", () => {
     expect(DEFAULT_CONFIG.excluded_models).toEqual(["space-bunny", "hy3", "hy3-x"])
   })
 
+  it("ships international-site model mappings", () => {
+    // Representative intl cli-whitelist models must have a vendor mapping.
+    for (const id of ["gpt-6-astra", "gpt-6.1-sol", "grok-4.7", "gemini-3.8-flash"]) {
+      expect(DEFAULT_CONFIG.models[id]).toBeDefined()
+      expect(DEFAULT_CONFIG.models[id].provider).toBeTruthy()
+      expect(DEFAULT_CONFIG.models[id].model).toBeTruthy()
+    }
+  })
+
   it("keeps config.default.json in sync with the runtime constant", () => {
     const raw = readFileSync(join(import.meta.dir, "..", "..", "config.default.json"), "utf8")
     expect(JSON.parse(raw)).toEqual(DEFAULT_CONFIG)
@@ -116,7 +125,7 @@ describe("configDir", () => {
   })
 
   it("puts the plugin config beside it", () => {
-    expect(configPath("/home/u")).toBe(join(configDir(undefined, "/home/u"), "codebuddy-quota.json"))
+    expect(configPath("/home/u")).toBe(join(configDir(undefined, "/home/u"), "codebuddy-quota-v2.json"))
   })
 })
 

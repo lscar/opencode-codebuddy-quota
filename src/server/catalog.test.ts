@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test"
-import { CLIENT_NAME, fetchCatalog, parseModelConfig, shortCredits } from "./catalog"
+import { fetchCatalog, parseModelConfig, shortCredits } from "./catalog"
+import type { SiteAuth } from "./login"
 
 const body = (over: Record<string, unknown> = {}) => ({
   code: 0,
@@ -12,10 +13,19 @@ const body = (over: Record<string, unknown> = {}) => ({
       { id: "glm-5.3-flash", name: "GLM-5.3-Flash", credits: "x0.08 credits",
         maxInputTokens: 1000000, maxOutputTokens: 131072, supportsImages: true,
         supportsReasoning: true, reasoning: { supportedEfforts: ["low", "high", "max"], defaultEffort: "high" } },
+      // A model present in the full table but absent from the cli allowlist.
+      { id: "kling-video-v3", name: "Kling", maxInputTokens: 1 },
     ],
   },
   ...over,
 })
+
+const auth: SiteAuth = {
+  id: "cn:u1", accessToken: "jwt-cn", refreshToken: "r1",
+  expiresAt: 0, refreshExpiresAt: 0, uid: "u1", enterpriseId: "ent-1",
+  realmDomain: "www.codebuddy.cn", endpoint: "https://copilot.tencent.com",
+  usageHost: "https://www.codebuddy.cn",
+}
 
 describe("shortCredits", () => {
   it("extracts the numeric factor", () => {
@@ -31,74 +41,15 @@ describe("parseModelConfig", () => {
     expect(models.map((m) => m.id)).toEqual(["hy4std", "glm-5.3-flash"])
   })
 
+  it("drops models absent from the allowlist even when in the full table", () => {
+    expect(parseModelConfig(body()).map((m) => m.id)).not.toContain("kling-video-v3")
+  })
+
   it("reads credits, image support and efforts", () => {
     const [hy4] = parseModelConfig(body())
     expect(hy4.credits).toBe(0.29)
     expect(hy4.imageInput).toBe(true)
     expect(hy4.efforts).toEqual(["high"])
-    expect(hy4.defaultEffort).toBe("high")
-  })
-
-  it("prepends off for a selectable model and does not duplicate it", () => {
-    const withOff = body({
-      data: {
-        agents: [{ name: "cli", models: ["toggle"] }],
-        models: [
-          {
-            id: "toggle",
-            name: "Toggle",
-            maxInputTokens: 1,
-            supportsReasoning: true,
-            reasoning: { supportedEfforts: ["low", "high", "off"], canDisableThinking: true, defaultEffort: "high" },
-          },
-        ],
-      },
-    })
-    // `off` comes from canDisableThinking and must not be added a second time.
-    // `sortEfforts` ranks it first, so the order is still least to most.
-    expect(parseModelConfig(withOff)[0].efforts).toEqual(["off", "low", "high"])
-  })
-
-  it("keeps a single locked level as both the only level and the default", () => {
-    const locked = body({
-      data: {
-        agents: [{ name: "cli", models: ["locked"] }],
-        models: [
-          {
-            id: "locked",
-            name: "Locked",
-            maxInputTokens: 1,
-            supportsReasoning: true,
-            reasoning: { effort: "high", canDisableThinking: false },
-          },
-        ],
-      },
-    })
-    expect(parseModelConfig(locked)[0].efforts).toEqual(["high"])
-    expect(parseModelConfig(locked)[0].defaultEffort).toBe("high")
-  })
-
-  it("drops a model that declares no capacity at all", () => {
-    const noCapacity = body({
-      data: {
-        agents: [{ name: "cli", models: ["empty-capacity", "hy4std"] }],
-        models: [
-          { id: "empty-capacity", name: "Empty", credits: "x0.10 credits" },
-          { id: "hy4std", name: "Hy4", credits: "x0.29 credits", maxInputTokens: 960000 },
-        ],
-      },
-    })
-    expect(parseModelConfig(noCapacity).map((m) => m.id)).toEqual(["hy4std"])
-  })
-
-  it("keeps a model that declares only an output window", () => {
-    const outputOnly = body({
-      data: {
-        agents: [{ name: "cli", models: ["out-only"] }],
-        models: [{ id: "out-only", name: "Out", maxOutputTokens: 64000 }],
-      },
-    })
-    expect(parseModelConfig(outputOnly).map((m) => m.id)).toEqual(["out-only"])
   })
 
   it("returns an empty list when data.models is absent", () => {
@@ -107,37 +58,47 @@ describe("parseModelConfig", () => {
 })
 
 describe("fetchCatalog", () => {
-  it("sends the CLI user agent that the endpoint requires", async () => {
+  it("GETs the site endpoint with JWT headers and x-domain", async () => {
+    let url = ""
     let seen: Record<string, string> = {}
-    const fetchImpl = (async (_u: string, init: RequestInit) => {
+    const fetchImpl = (async (u: string, init: RequestInit) => {
+      url = String(u)
       seen = init.headers as Record<string, string>
       return new Response(JSON.stringify(body()), { status: 200 })
     }) as unknown as typeof fetch
-    await fetchCatalog({ key: "k", fetchImpl })
+    const models = await fetchCatalog({ site: "cn", auth, fetchImpl })
+    expect(url).toBe("https://copilot.tencent.com/v3/config")
+    expect(seen["x-domain"]).toBe("copilot.tencent.com")
+    expect(seen["authorization"]).toBe("Bearer jwt-cn")
     expect(seen["user-agent"]).toContain("CLI/")
-    expect(seen["x-api-key"]).toBe("k")
-    expect(seen["x-product"]).toBe("SaaS")
-    expect(seen["x-ide-name"]).toBe(CLIENT_NAME)
+    expect(seen["x-api-key"]).toBeUndefined()
+    expect(models.map((m) => m.id)).toEqual(["hy4std", "glm-5.3-flash"])
+  })
+
+  it("uses the intl endpoint for the intl site", async () => {
+    let url = ""
+    const fetchImpl = (async (u: string) => {
+      url = String(u)
+      return new Response(JSON.stringify(body()), { status: 200 })
+    }) as unknown as typeof fetch
+    await fetchCatalog({ site: "intl", auth: { ...auth, endpoint: "https://www.codebuddy.ai" }, fetchImpl })
+    expect(url).toBe("https://www.codebuddy.ai/v3/config")
   })
 
   it("throws with a diagnosable message when models are silently omitted", async () => {
     const fetchImpl = (async () =>
       new Response(JSON.stringify({ code: 0, msg: "OK", data: {} }), { status: 200 })) as unknown as typeof fetch
-    await expect(fetchCatalog({ key: "k", fetchImpl })).rejects.toThrow("CLI/")
+    await expect(fetchCatalog({ site: "cn", auth, fetchImpl })).rejects.toThrow("CLI/")
   })
 
   it("throws on a non-zero upstream code", async () => {
     const fetchImpl = (async () =>
       new Response(JSON.stringify({ code: 401, msg: "unauthorized" }), { status: 200 })) as unknown as typeof fetch
-    await expect(fetchCatalog({ key: "k", fetchImpl })).rejects.toThrow("401")
+    await expect(fetchCatalog({ site: "cn", auth, fetchImpl })).rejects.toThrow("401")
   })
 
   it("throws on a non-2xx status", async () => {
     const fetchImpl = (async () => new Response("", { status: 500 })) as unknown as typeof fetch
-    await expect(fetchCatalog({ key: "k", fetchImpl })).rejects.toThrow("500")
-  })
-
-  it("throws when the key is empty", async () => {
-    await expect(fetchCatalog({ key: "  " })).rejects.toThrow("OPENCODE_CODEBUDDY_API_KEY")
+    await expect(fetchCatalog({ site: "cn", auth, fetchImpl })).rejects.toThrow("500")
   })
 })

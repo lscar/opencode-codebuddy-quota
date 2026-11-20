@@ -51,12 +51,24 @@ export const DEFAULT_CONFIG: QuotaConfig = {
     "hy3-x": { provider: "tencent-tokenhub", model: "hy3" },
     // Same model as minimax-m3.1-flash; CodeBuddy just bills it under its own id.
     "space-bunny": { provider: "minimax-cn", model: "MiniMax-M3.1-Flash" },
+    // International-site cli-whitelist models. Identifiers come from models.dev.
+    "gpt-6-astra": { provider: "kunavo", model: "gpt-6-astra" },
+    "gpt-6.1-sol": { provider: "commandcode", model: "gpt-6.1-sol" },
+    "gpt-6-sol": { provider: "zerogpu", model: "gpt-6-sol" },
+    "gpt-6-luna": { provider: "zerogpu", model: "gpt-6-luna" },
+    "gpt-5.6-luna": { provider: "zerogpu", model: "gpt-5.6-luna" },
+    "gpt-5.6-sol": { provider: "zerogpu", model: "gpt-5.6-sol" },
+    "grok-4.7": { provider: "cheapaimodel", model: "grok-4.7" },
+    "gemini-3.8-flash": { provider: "google", model: "gemini-3.8-flash" },
+    "glm-5.3": { provider: "greenpt", model: "glm-5.3" },
+    "kimi-k3.1-pro": { provider: "wafer.ai", model: "kimi-k3.1-pro" },
+    "kimi-k3": { provider: "wafer.ai", model: "kimi-k3" },
   },
   excluded_models: ["space-bunny", "hy3", "hy3-x"],
   package_version: DEFAULT_PACKAGE_VERSION,
 }
 
-export const CONFIG_FILE_NAME = "codebuddy-quota.json"
+export const CONFIG_FILE_NAME = "codebuddy-quota-v2.json"
 
 /** `$XDG_CONFIG_HOME/opencode`, or `~/.config/opencode` when it is unset. */
 export function configDir(
@@ -68,7 +80,7 @@ export function configDir(
   return join(home, ".config", "opencode")
 }
 
-/** `~/.config/opencode/codebuddy-quota.json`, beside the user's `opencode.json(c)`. */
+/** `~/.config/opencode/codebuddy-quota-v2.json`, beside the user's `opencode.json(c)`. */
 export function configPath(home: string = homedir()): string {
   return join(configDir(undefined, home), CONFIG_FILE_NAME)
 }
