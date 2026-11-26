@@ -1,4 +1,4 @@
-import { Plugin, Slot } from "@opencode/plugin/gui"
+import { Plugin, Slot, Style } from "@opencode/plugin/gui"
 import { createSignal, onCleanup } from "solid-js"
 import { CodebuddyQuota } from "../rpc"
 import { Battery } from "./gui/battery"
@@ -6,9 +6,14 @@ import { QuotaDialog } from "./gui/dialog"
 import { formatPct, paceColor } from "./gui/pace"
 import { remainingPercent, remainingShare, type Quota } from "./gui/quota"
 import { createQuotaStore, HOVER_MIN_AGE_MS } from "./gui/store"
+import dialogCss from "./gui/dialog.css?inline"
 
 export default Plugin.define({
   setup(ctx) {
+    // Scoped dialog styles. currentColor/color-mix follow the active OpenCode
+    // theme, so the dialog stays in step with light/dark and custom themes.
+    ctx.add(Style, dialogCss)
+
     // The client is read per request, not captured here: it changes when the
     // OpenCode server restarts, and a captured one would keep failing.
     const store = createQuotaStore(() => ctx.client.rpc(CodebuddyQuota))

@@ -1,4 +1,6 @@
 import { describe, expect, it } from "bun:test"
+import { readFileSync } from "node:fs"
+import { join } from "node:path"
 import { freshness, paceHint, pctInt, timeMarkerLeft } from "./dialog-helpers"
 import { normalizeQuota } from "./quota"
 import { formatCredits, formatPct, paceColor } from "./pace"
@@ -84,6 +86,26 @@ describe("dialog display helpers", () => {
     expect(freshness(q()).text).toBe("实时")
     expect(freshness(q({ cached: true, ageSeconds: 12 })).text).toBe("缓存（12 秒前）")
     expect(freshness(q({ stale: true, error: "x" })).color).toBe("#ff7a7a")
+  })
+})
+
+describe("dialog theme-aware styling", () => {
+  const here = import.meta.dir
+  const css = readFileSync(join(here, "dialog.css"), "utf8")
+  const tsx = readFileSync(join(here, "dialog.tsx"), "utf8")
+
+  it("derives colors from currentColor/color-mix rather than a hard-coded palette", () => {
+    expect(css).toContain("currentColor")
+    expect(css).toContain("color-mix")
+    // No legacy hard-coded blue/purple that ignores the active theme.
+    expect(tsx).not.toMatch(/#33508f|#4a3f9e|91,140,255/)
+  })
+
+  it("uses the scoped cq- classes that the injected stylesheet targets", () => {
+    for (const cls of ["cq-tag", "cq-dot", "cq-amount", "cq-track", "cq-fill", "cq-hint", "cq-row"]) {
+      expect(css).toContain(`.${cls}`)
+      expect(tsx).toContain(`"${cls}"`)
+    }
   })
 })
 

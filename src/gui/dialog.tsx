@@ -88,21 +88,30 @@ export function QuotaDialog(props: QuotaDialogProps): JSX.Element {
 
   const tag = (info: SiteInfo): JSX.Element => {
     const selected = info.site === site()
-    const tagStyle: JSX.CSSProperties = {
-      flex: "1",
-      border: "1px solid",
-      "border-color": selected ? "rgba(91,140,255,.9)" : "rgba(128,128,128,.35)",
-      background: selected ? "linear-gradient(135deg,#33508f,#4a3f9e)" : "rgba(0,0,0,.15)",
-      color: selected ? "#fff" : "inherit",
-      "font-size": "12px",
-      padding: "8px 6px",
-      "border-radius": "8px",
-      cursor: "pointer",
-      "font-weight": "600",
-    }
+    // The selected look (soft-accent border/glow/text) lives in dialog.css via
+    // [data-active]; leave these props off so the class is not overridden by
+    // an inline value (inline style always wins over a stylesheet).
+    const tagStyle: JSX.CSSProperties = selected
+      ? {
+          flex: "1", border: "1px solid", "font-size": "12px", padding: "8px 6px",
+          "border-radius": "8px", cursor: "pointer", "font-weight": "600",
+        }
+      : {
+          flex: "1", border: "1px solid",
+          "border-color": "color-mix(in oklab, currentColor 22%, transparent)",
+          background: "color-mix(in oklab, currentColor 5%, transparent)",
+          color: "inherit", "font-size": "12px", padding: "8px 6px",
+          "border-radius": "8px", cursor: "pointer", "font-weight": "600",
+        }
     return (
-      <div style={tagStyle} onClick={() => (info.available ? select(info.site) : login(info.site))}>
+      <div
+        class="cq-tag"
+        data-active={selected ? "true" : "false"}
+        style={tagStyle}
+        onClick={() => (info.available ? select(info.site) : login(info.site))}
+      >
         <span
+          class="cq-dot"
           style={{
             "display": "inline-block",
             width: "6px",
@@ -130,7 +139,7 @@ export function QuotaDialog(props: QuotaDialogProps): JSX.Element {
       </div>
       <div style={{ display: "flex", "align-items": "center", gap: "6px", "font-size": "10px",
         color: fresh().color, "margin-bottom": "12px" }}>
-        <span style={{ width: "6px", height: "6px", "border-radius": "50%", background: fresh().color }} />
+        <span class="cq-dot" style={{ width: "6px", height: "6px", "border-radius": "50%", background: fresh().color }} />
         {fresh().text}
       </div>
 
@@ -139,8 +148,8 @@ export function QuotaDialog(props: QuotaDialogProps): JSX.Element {
           style={{
             padding: "12px",
             "border-radius": "10px",
-            background: "rgba(255,255,255,.04)",
-            border: "1px dashed rgba(255,255,255,.2)",
+            background: "color-mix(in oklab, currentColor 5%, transparent)",
+            border: "1px dashed color-mix(in oklab, currentColor 24%, transparent)",
             "font-size": "12px",
             "line-height": "1.6",
             "text-align": "center",
@@ -164,23 +173,28 @@ export function QuotaDialog(props: QuotaDialogProps): JSX.Element {
         <>
           <div style={{ display: "flex", "align-items": "baseline", "justify-content": "space-between", "margin-bottom": "2px" }}>
             <span style={{ "font-size": "12px", opacity: "0.72" }}>本周期剩余额度</span>
-            <span style={{ "font-size": "26px", "font-weight": "750", "font-variant-numeric": "tabular-nums" }}>
+            <span class="cq-amount" style={{ "font-size": "26px", "font-weight": "750", "font-variant-numeric": "tabular-nums" }}>
               {formatCredits(q().remaining)} <small style={{ "font-size": "12px", "font-weight": "500", opacity: "0.7" }}>积分</small>
             </span>
           </div>
 
           {/* Variant A: one bar for both progressions. Fill = credits used,
               white marker = elapsed time. Legend carries the numbers once. */}
-          <div style={{ position: "relative", height: "16px", "border-radius": "6px", background: "rgba(128,128,128,.18)", "margin-top": "10px" }}>
+          <div class="cq-track" style={{ position: "relative", height: "16px", "border-radius": "6px", background: "color-mix(in oklab, currentColor 12%, transparent)", "margin-top": "10px" }}>
             <div
+              class="cq-fill"
               style={{
                 position: "absolute", left: "0", top: "0", bottom: "0",
                 width: `${Math.max(0, Math.min(100, q().usedPct ?? 0))}%`,
-                background: paceColor(q()), "border-radius": "6px",
+                "border-radius": "6px",
+                // The flowing gradient lives in dialog.css (.cq-fill). Setting
+                // color here makes currentColor resolve to the pace colour there.
+                color: paceColor(q()),
               }}
             />
             {q().timePct !== null && (
               <div
+                class="cq-marker"
                 style={{
                   position: "absolute", top: "-3px", bottom: "-3px",
                   left: `${timeMarkerLeft(q().timePct)}%`,
@@ -195,10 +209,11 @@ export function QuotaDialog(props: QuotaDialogProps): JSX.Element {
           </div>
 
           <div
+            class="cq-hint"
             style={{
               display: "flex", gap: "9px", "align-items": "flex-start",
               "border-radius": "9px", padding: "10px 12px", "font-size": "12px",
-              border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.05)",
+              border: "1px solid color-mix(in oklab, currentColor 12%, transparent)",
               "margin-top": "12px",
             }}
           >
@@ -218,8 +233,8 @@ export function QuotaDialog(props: QuotaDialogProps): JSX.Element {
           </div>
 
           <div style={{ "margin-top": "13px", "border-top": "1px solid rgba(255,255,255,.1)", "padding-top": "6px" }}>
-            <div style={row}><span style={key}>已使用</span><span style={val}>{formatCredits(q().used)} 积分</span></div>
-            <div style={row}><span style={key}>总额度</span><span style={val}>{formatCredits(q().total)} 积分</span></div>
+            <div class="cq-row" style={row}><span style={key}>已使用</span><span style={val}>{formatCredits(q().used)} 积分</span></div>
+            <div class="cq-row" style={row}><span style={key}>总额度</span><span style={val}>{formatCredits(q().total)} 积分</span></div>
             <div style={{ ...row, "border-bottom": "none" }}><span style={key}>到期 / 重置</span><span style={val}>{q().resetAt ?? "—"}</span></div>
           </div>
         </>
@@ -236,7 +251,7 @@ export function QuotaDialog(props: QuotaDialogProps): JSX.Element {
       title={`CodeBuddy 额度 · ${SITE_LABEL[site()]}`}
       size="fit"
       footer={
-        <Button variant="contrast" busy={busy()} onClick={() => refresh(site())}>
+        <Button variant="neutral" busy={busy()} onClick={() => refresh(site())}>
           刷新
         </Button>
       }
