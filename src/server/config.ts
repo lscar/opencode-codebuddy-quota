@@ -83,7 +83,7 @@ export const DEFAULT_CONFIG: QuotaConfig = {
   package_version: DEFAULT_PACKAGE_VERSION,
 }
 
-export const CONFIG_FILE_NAME = "codebuddy-quota-v2.json"
+export const CONFIG_FILE_NAME = "codebuddy-quota.json"
 
 /** `$XDG_CONFIG_HOME/opencode`, or `~/.config/opencode` when it is unset. */
 export function configDir(
@@ -95,7 +95,7 @@ export function configDir(
   return join(home, ".config", "opencode")
 }
 
-/** `~/.config/opencode/codebuddy-quota-v2.json`, beside the user's `opencode.json(c)`. */
+/** `~/.config/opencode/codebuddy-quota.json`, beside the user's `opencode.json(c)`. */
 export function configPath(home: string = homedir()): string {
   return join(configDir(undefined, home), CONFIG_FILE_NAME)
 }

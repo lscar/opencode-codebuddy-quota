@@ -1,5 +1,5 @@
 {
-  "name": "opencode-codebuddy-quota-v2",
+  "name": "opencode-codebuddy-quota",
   "version": "0.1.0",
   "description": "OpenCode plugin: dual-site (CN/INTL) CodeBuddy providers with dynamic JWT and a quota capsule that switches sites",
   "type": "module",
@@ -12,7 +12,8 @@
     "rpc.ts",
     "src",
     "config.default.json",
-    "dist"
+    "dist",
+    "!**/*.test.ts"
   ],
   "exports": {
     ".": "./server.ts",
@@ -30,10 +31,10 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/lscar/opencode-codebuddy-quota-v2.git"
+    "url": "git+https://github.com/lscar/opencode-codebuddy-quota.git"
   },
-  "homepage": "https://github.com/lscar/opencode-codebuddy-quota-v2#readme",
-  "bugs": "https://github.com/lscar/opencode-codebuddy-quota-v2/issues",
+  "homepage": "https://github.com/lscar/opencode-codebuddy-quota#readme",
+  "bugs": "https://github.com/lscar/opencode-codebuddy-quota/issues",
   "dependencies": {
     "@opencode/plugin": "2.2.5"
   },

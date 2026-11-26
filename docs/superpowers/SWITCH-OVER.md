@@ -1,14 +1,14 @@
-# CodeBuddy Quota V2 切换清单
+# CodeBuddy Quota 切换清单
 
-开发期新旧插件**并行共存**；只有新插件全部验证通过后，才按本文**手动**切换到 V2。
+开发期新旧插件**并行共存**；只有新插件全部验证通过后，才按本文**手动**切换到新插件。
 切换涉及改用户的 `~/.config/opencode/opencode.jsonc` 和插件注册，属于危险操作——
 **执行前先备份、逐步确认，不要一次性全删。**
 
 ## 并行期状态（当前）
 
-- 旧插件 `opencode-codebuddy-quota` 与旧 provider `codebuddy` 原样运行，会话/胶囊/对话均不受影响。
-- 新插件 `opencode-codebuddy-quota-v2` 追加注册，新增 provider `codebuddy-cn` / `codebuddy-intl`，两胶囊在 `session.header` 并存。
-- 新插件自包含登录：浮层点「登录」→ 浏览器授权 → 轮询 `auth/token` → 写自己的缓存 `~/.config/opencode/codebuddy-quota-v2-auth.json`；不读、不写 CLI 的 auth 文件。
+- 旧插件（切换前版本）与旧 provider `codebuddy` 原样运行，会话/胶囊/对话均不受影响。
+- 新插件 `opencode-codebuddy-quota` 追加注册，新增 provider `codebuddy-cn` / `codebuddy-intl`，两胶囊在 `session.header` 并存。
+- 新插件自包含登录：浮层点「登录」→ 浏览器授权 → 轮询 `auth/token` → 写自己的缓存 `~/.config/opencode/codebuddy-quota-auth.json`；不读、不写 CLI 的 auth 文件。
 - 本地代理 `127.0.0.1:7688`，按 `/cn/v2`、`/intl/v2` 选站并注入 JWT。
 
 ## 切换前置条件（全部打勾才动手）
@@ -23,7 +23,7 @@
 
 ## 切换步骤（手动）
 
-1. **备份用户配置**：复制 `~/.config/opencode/opencode.jsonc` 为 `opencode.jsonc.manual-backup`（新插件自己的 `.codebuddy-quota-v2.bak` 由 writer 自动留底，但手工整份备份更稳）。
+1. **备份用户配置**：复制 `~/.config/opencode/opencode.jsonc` 为 `opencode.jsonc.manual-backup`（新插件自己的 `.codebuddy-quota.bak` 由 writer 自动留底，但手工整份备份更稳）。
 2. **停掉旧插件**：从 `opencode.jsonc` 的 `plugins` 数组移除旧插件路径，只保留新插件路径。
 3. **重启 opencode**，确认只剩新插件的胶囊，且能正常对话与切换站点。
 4. **观察一个完整周期**（含一次 JWT 过期刷新）：无异常后，再清理旧 provider。
@@ -36,7 +36,7 @@
 - 从 `opencode.jsonc.manual-backup` 恢复配置；
 - 恢复旧插件路径到 `plugins`；
 - 重启 opencode。
-新插件的缓存文件 `codebuddy-quota-v2-auth.json` 可保留（无害）或删除后重新登录。
+新插件的缓存文件 `codebuddy-quota-auth.json` 可保留（无害）或删除后重新登录。
 
 ## 已知限制 / 非目标
 

@@ -20,9 +20,9 @@ const PROXY_PORT = 7688
 const UPSTREAM_TIMEOUT_MS = 15_000
 
 export default Plugin.define({
-  id: "codebuddy-quota-v2",
+  id: "codebuddy-quota",
   async setup(ctx) {
-    const log = createDedupedLogger((line) => console.warn(line), "[codebuddy-quota-v2]")
+    const log = createDedupedLogger((line) => console.warn(line), "[codebuddy-quota]")
 
     // Restore both sites' credentials from the plugin-owned cache; no CLI auth
     // file is read, and no token ever reaches the GUI.
@@ -92,7 +92,7 @@ export default Plugin.define({
           packageVersion: deps.packageVersion,
           proxyPort: PROXY_PORT,
           backup: (path, content) => {
-            const backupPath = `${path}.codebuddy-quota-v2.bak`
+            const backupPath = `${path}.codebuddy-quota.bak`
             try {
               // Only the first backup is kept, so the pre-plugin original survives.
               if (!existsSync(backupPath)) writeFileSync(backupPath, content, "utf8")

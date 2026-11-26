@@ -33,11 +33,11 @@ OpenCode 插件：在状态栏显示 CodeBuddy 额度胶囊，并把 CodeBuddy �
 2. 在需要登录的站点标签上点「登录」，浏览器会打开授权页。
 3. 完成授权后插件自行轮询获取凭据，胶囊与弹窗自动刷新。
 
-凭据缓存位于 `~/.config/opencode/codebuddy-quota-v2-auth.json`，可删除后重新登录。
+凭据缓存位于 `~/.config/opencode/codebuddy-quota-auth.json`，可删除后重新登录。
 
 ## 配置
 
-高级映射配置位于 `~/.config/opencode/codebuddy-quota-v2.json`（可选）：
+高级映射配置位于 `~/.config/opencode/codebuddy-quota.json`（可选）：
 
 ```jsonc
 {

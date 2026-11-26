@@ -3,6 +3,6 @@ dist/
 *.log
 *.bak
 .DS_Store
-# v2 plugin: user config + credential cache must never be committed
-codebuddy-quota-v2.json
-codebuddy-quota-v2-auth.json
+# plugin: user config + credential cache must never be committed
+codebuddy-quota.json
+codebuddy-quota-auth.json

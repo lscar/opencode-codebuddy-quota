@@ -74,7 +74,7 @@ describe("activeAccount", () => {
 
 describe("readCache / writeCache / cachePath", () => {
   it("uses the v2 cache filename", () => {
-    expect(cachePath("/base")).toBe(join("/base", "codebuddy-quota-v2-auth.json"))
+    expect(cachePath("/base")).toBe(join("/base", "codebuddy-quota-auth.json"))
   })
 
   it("round-trips the new structure", () => {
@@ -104,7 +104,7 @@ describe("readCache / writeCache / cachePath", () => {
   it("writes to a caller-supplied directory", () => {
     let path = ""
     writeCache(emptyCache(), (p) => { path = p }, "/custom/dir")
-    expect(path).toBe(join("/custom/dir", "codebuddy-quota-v2-auth.json"))
+    expect(path).toBe(join("/custom/dir", "codebuddy-quota-auth.json"))
   })
 
   it("migrates the old single-SiteAuth cn/intl format", () => {

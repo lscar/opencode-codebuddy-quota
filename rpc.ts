@@ -37,7 +37,7 @@ const siteInfoSchema = {
 } as const
 
 export const CodebuddyQuota = Rpc.define({
-  id: "codebuddy-quota-v2",
+  id: "codebuddy-quota",
   methods: {
     read: {
       input: {

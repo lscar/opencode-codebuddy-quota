@@ -12,7 +12,7 @@ export interface TokenCache {
   selected: Site
 }
 
-export const CACHE_FILENAME = "codebuddy-quota-v2-auth.json"
+export const CACHE_FILENAME = "codebuddy-quota-auth.json"
 
 export function cachePath(dir?: string): string {
   const base = dir ?? join(homedir(), ".config", "opencode")

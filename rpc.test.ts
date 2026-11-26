@@ -3,7 +3,7 @@ import { CodebuddyQuota } from "./rpc"
 
 describe("CodebuddyQuota contract", () => {
   it("registers under the v2 plugin id with read + login methods", () => {
-    expect(CodebuddyQuota.id).toBe("codebuddy-quota-v2")
+    expect(CodebuddyQuota.id).toBe("codebuddy-quota")
     expect(Object.keys(CodebuddyQuota.methods)).toEqual(["read", "login"])
   })
 
