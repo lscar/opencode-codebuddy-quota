@@ -10,9 +10,12 @@ import type { ModelMapping } from "./config"
  * which is exactly why the mapping names the provider rather than inferring it.
  */
 
+/** models.dev v3 sometimes declares cache.write as per-duration tiers, e.g. {"5m":3,"1h":6}. */
+export type CacheWritePrice = number | Record<string, number>
+
 export interface ModelsDevCost {
   text?: {
-    input?: { price?: number; cache?: { read?: number; write?: number } }
+    input?: { price?: number; cache?: { read?: number; write?: CacheWritePrice } }
     output?: { price?: number }
   }
 }
@@ -32,7 +35,7 @@ export interface ModelsDevEntry {
   }
 }
 
-/** `{ [providerID]: { models: { [modelID]: entry } } }`, as stored under `models-dev:v2:catalog`. */
+/** `{ [providerID]: { models: { [modelID]: entry } } }`, as stored under `models-dev:v3:catalog`. */
 export type ModelsDevCatalog = Record<string, { models?: Record<string, ModelsDevEntry> }>
 
 export interface ModelCost {
@@ -85,6 +88,11 @@ export function findEntry(
   return undefined
 }
 
+/** Only a finite number is a usable price; tier objects and strings fall back to zero. */
+function finitePrice(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : 0
+}
+
 function toCost(entry: ModelsDevEntry): ModelCost | null {
   const text = entry.cost?.text
   const input = text?.input?.price
@@ -93,8 +101,12 @@ function toCost(entry: ModelsDevEntry): ModelCost | null {
   return {
     input,
     output,
-    // Most catalog entries omit cache.write; zero is the honest reading.
-    cache: { read: text?.input?.cache?.read ?? 0, write: text?.input?.cache?.write ?? 0 },
+    // Most catalog entries omit cache.write; some v3 entries declare it as a
+    // per-duration tier object. Neither is a usable scalar, so fall back to zero.
+    cache: {
+      read: finitePrice(text?.input?.cache?.read),
+      write: finitePrice(text?.input?.cache?.write),
+    },
   }
 }
 

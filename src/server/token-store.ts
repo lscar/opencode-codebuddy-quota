@@ -210,6 +210,12 @@ export function createTokenStore(deps: StoreDeps = {}): TokenStore {
     all: () => cache,
     archive: (auth) => {
       cache = archive(cache, auth)
+      // A freshly stored credential (login or a successful refresh) makes any
+      // prior refresh failure stale. Clear it so the site reads as available
+      // again and the amber "needs login" dot disappears.
+      const site: Site = auth.id.startsWith("intl:") ? "intl" : "cn"
+      refreshErrors[site] = false
+      delete lastRefreshAt[site]
       save()
     },
     select: (site) => {

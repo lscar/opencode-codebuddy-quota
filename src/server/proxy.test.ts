@@ -57,9 +57,18 @@ function resDouble(): ProxyResponse & { chunks: string[]; statusCode: number; he
 }
 
 describe("handleRequest", () => {
-  const storeWith = () => {
+  const storeWith = (site: "cn" | "intl" = "cn") => {
+    const cn = auth()
+    const intlAuth: SiteAuth = {
+      ...cn, id: "intl:u1", enterpriseId: null, realmDomain: "www.codebuddy.ai",
+      endpoint: "https://www.codebuddy.ai", usageHost: "https://www.codebuddy.ai",
+    }
     const store = createTokenStore({
-      load: () => ({ accounts: { cn: [auth()], intl: [] }, activeId: { cn: "cn:u1", intl: null }, selected: "cn" }),
+      load: () => ({
+        accounts: { cn: site === "cn" ? [cn] : [], intl: site === "intl" ? [intlAuth] : [] },
+        activeId: { cn: site === "cn" ? cn.id : null, intl: site === "intl" ? intlAuth.id : null },
+        selected: site,
+      }),
       persist: () => {},
     })
     return store
@@ -90,6 +99,163 @@ describe("handleRequest", () => {
     expect(JSON.parse(body).stream).toBe(true)
     expect(res.headers["content-type"]).toBe("text/event-stream")
     expect(res.chunks.join("")).toContain("data: [DONE]")
+  })
+
+  it("adds the intl channel-verification headers and leading system prompt", async () => {
+    let headers: Record<string, string> = {}
+    let body = ""
+    const fetchImpl = (async (_u: string | URL | Request, init?: RequestInit) => {
+      headers = (init?.headers ?? {}) as Record<string, string>
+      body = String(init?.body ?? "")
+      return new Response("data: [DONE]\n\n", { status: 200, headers: { "content-type": "text/event-stream" } })
+    }) as unknown as typeof fetch
+    const intlAuth = (): SiteAuth => ({
+      id: "intl:u1", accessToken: "jwt-intl", refreshToken: "r1",
+      expiresAt: Date.now() + 3_600_000, refreshExpiresAt: Date.now() + 86_400_000,
+      uid: "u1", enterpriseId: null, realmDomain: "www.codebuddy.ai",
+      endpoint: "https://www.codebuddy.ai", usageHost: "https://www.codebuddy.ai",
+    })
+    const store = createTokenStore({
+      load: () => ({ accounts: { cn: [], intl: [intlAuth()] }, activeId: { cn: null, intl: "intl:u1" }, selected: "intl" }),
+      persist: () => {},
+    })
+    await handleRequest(
+      { url: "/intl/v2/chat/completions", method: "POST" },
+      resDouble(),
+      {
+        store, fetchImpl,
+        readBody: async () => JSON.stringify({ model: "m", messages: [{ role: "user", content: "Hi" }] }),
+      },
+    )
+    expect(headers["x-conversation-id"]).toBeTruthy()
+    expect(headers["x-conversation-request-id"]).toBeTruthy()
+    expect(headers["x-conversation-message-id"]).toBeTruthy()
+    expect(headers["x-request-id"]).toBe(headers["x-conversation-message-id"])
+    expect(headers["x-app"]).toBe("cli")
+    const parsed = JSON.parse(body)
+    expect(parsed.messages[0]).toEqual({ role: "system", content: "You are CodeBuddy Code." })
+    expect(parsed.messages[1]).toEqual({ role: "user", content: "Hi" })
+  })
+
+  it("does not turn a missing messages array into a system-only request", async () => {
+    let body = ""
+    const fetchImpl = (async (_u: string | URL | Request, init?: RequestInit) => {
+      body = String(init?.body ?? "")
+      return new Response("data: [DONE]\n\n", { status: 200, headers: { "content-type": "text/event-stream" } })
+    }) as unknown as typeof fetch
+    await handleRequest(
+      { url: "/intl/v2/chat/completions", method: "POST" },
+      resDouble(),
+      {
+        store: storeWith("intl"),
+        fetchImpl,
+        readBody: async () => JSON.stringify({ model: "m" }),
+      },
+    )
+    const parsed = JSON.parse(body)
+    expect(parsed.messages).toBeUndefined()
+  })
+
+  it("detects an existing system identity anywhere and does not prepend a duplicate", async () => {
+    let body = ""
+    const fetchImpl = (async (_u: string | URL | Request, init?: RequestInit) => {
+      body = String(init?.body ?? "")
+      return new Response("data: [DONE]\n\n", { status: 200, headers: { "content-type": "text/event-stream" } })
+    }) as unknown as typeof fetch
+    await handleRequest(
+      { url: "/intl/v2/chat/completions", method: "POST" },
+      resDouble(),
+      {
+        store: storeWith("intl"),
+        fetchImpl,
+        // Identity deliberately NOT first: a first-only check would prepend a duplicate.
+        readBody: async () => JSON.stringify({
+          model: "m",
+          messages: [
+            { role: "user", content: "Hi" },
+            { role: "system", content: "You are CodeBuddy Code." },
+          ],
+        }),
+      },
+    )
+    const parsed = JSON.parse(body)
+    const identityCount = parsed.messages.filter(
+      (m: { content?: unknown }) => typeof m.content === "string" && m.content.includes("CodeBuddy Code"),
+    ).length
+    expect(identityCount).toBe(1)
+    expect(parsed.messages.length).toBe(2)
+  })
+
+  it("does not mistake an unrelated system message that merely mentions the name for the identity", async () => {
+    let body = ""
+    const fetchImpl = (async (_u: string | URL | Request, init?: RequestInit) => {
+      body = String(init?.body ?? "")
+      return new Response("data: [DONE]\n\n", { status: 200, headers: { "content-type": "text/event-stream" } })
+    }) as unknown as typeof fetch
+    await handleRequest(
+      { url: "/intl/v2/chat/completions", method: "POST" },
+      resDouble(),
+      {
+        store: storeWith("intl"),
+        fetchImpl,
+        readBody: async () => JSON.stringify({
+          model: "m",
+          messages: [
+            { role: "system", content: "Follow the CodeBuddy Code style guide when replying." },
+            { role: "user", content: "Hi" },
+          ],
+        }),
+      },
+    )
+    const parsed = JSON.parse(body)
+    // The real identity must be injected because the unrelated system message
+    // only mentions the name; a loose `includes` check would wrongly skip it.
+    expect(parsed.messages[0]).toEqual({ role: "system", content: "You are CodeBuddy Code." })
+    const identities = parsed.messages.filter(
+      (m: { role?: string; content?: unknown }) =>
+        m.role === "system" && m.content === "You are CodeBuddy Code.",
+    )
+    expect(identities).toHaveLength(1)
+  })
+
+  it("does not duplicate the identity when it has trailing whitespace or is an array", async () => {
+    // The identity may arrive wrapped with trailing whitespace/newline, or as a
+    // multimodal content array. All are semantically the identity and must not
+    // get a second copy injected — but must still not match unrelated text.
+    const shapes: unknown[] = [
+      "You are CodeBuddy Code.\n",
+      "You are CodeBuddy Code. ",
+      [{ type: "text", text: "You are CodeBuddy Code." }],
+    ]
+    for (const content of shapes) {
+      let body = ""
+      const fetchImpl = (async (_u: string | URL | Request, init?: RequestInit) => {
+        body = String(init?.body ?? "")
+        return new Response("data: [DONE]\n\n", { status: 200, headers: { "content-type": "text/event-stream" } })
+      }) as unknown as typeof fetch
+      await handleRequest(
+        { url: "/intl/v2/chat/completions", method: "POST" },
+        resDouble(),
+        {
+          store: storeWith("intl"),
+          fetchImpl,
+          readBody: async () => JSON.stringify({
+            model: "m",
+            messages: [{ role: "system", content }, { role: "user", content: "Hi" }],
+          }),
+        },
+      )
+      const parsed = JSON.parse(body)
+      const asText = (c: unknown) =>
+        typeof c === "string" ? c
+        : Array.isArray(c) ? c.map((b: any) => String(b?.text ?? "")).join("")
+        : ""
+      const identities = parsed.messages.filter(
+        (m: { role?: string; content?: unknown }) =>
+          m.role === "system" && asText(m.content).trim() === "You are CodeBuddy Code.",
+      )
+      expect(identities).toHaveLength(1)
+    }
   })
 
   it("does not forward content-encoding (body is already decompressed)", async () => {

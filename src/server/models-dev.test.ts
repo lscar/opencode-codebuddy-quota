@@ -33,6 +33,11 @@ describe("readModelsDevCatalog", () => {
   it("returns null when the key is absent", () => {
     expect(readModelsDevCatalog({ readValue: () => null })).toBe(null)
   })
+  it("reads the v3 catalog key (OpenCode renamed it from v2)", () => {
+    let queried = ""
+    readModelsDevCatalog({ readValue: (_dbPath, key) => { queried = key; return null } })
+    expect(queried).toBe("models-dev:v3:catalog")
+  })
   it("returns the parsed catalog on success", () => {
     const inner = JSON.stringify({ zhipuai: { models: {} } })
     const value = JSON.stringify({ body: inner })

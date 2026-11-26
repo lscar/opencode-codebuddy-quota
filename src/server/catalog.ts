@@ -10,6 +10,7 @@
 import type { Site } from "../shared"
 import { apiHeaders } from "./headers"
 import type { SiteAuth } from "./login"
+import { anySignal, timeoutSignal } from "./signal"
 
 export const CONFIG_URL = "https://copilot.tencent.com/v3/config"
 
@@ -122,9 +123,39 @@ function readEfforts(reasoning: Record<string, unknown> | null): { efforts: stri
  * the body carries no models — deciding that emptiness is a failure is
  * `fetchCatalog`'s job, not this function's.
  */
+/** ids a tier blocks for the current account (paywall tiers WorkBuddy hides). */
+function paywallIds(data: Record<string, unknown>): Set<string> {
+  const out = new Set<string>()
+  if (!Array.isArray(data.modelTiers)) return out
+  for (const tier of data.modelTiers as Array<Record<string, unknown>>) {
+    if (tier?.accessMode !== "paywall" || !Array.isArray(tier.modelIds)) continue
+    for (const id of tier.modelIds) if (typeof id === "string") out.add(id)
+  }
+  return out
+}
+
+/** ids carrying an active-looking promotion (WorkBuddy keeps the free/featured twin). */
+function promotedIds(data: Record<string, unknown>): Set<string> {
+  const out = new Set<string>()
+  if (!Array.isArray(data.modelPromotions)) return out
+  for (const promo of data.modelPromotions as Array<Record<string, unknown>>) {
+    if (!Array.isArray(promo?.modelIds)) continue
+    for (const id of promo.modelIds) if (typeof id === "string") out.add(id)
+  }
+  return out
+}
+
 export function parseModelConfig(body: unknown): readonly CatalogModel[] {
   const data = (body as { data?: unknown })?.data as Record<string, unknown> | undefined
   if (!data) return []
+
+  // Pro-only filtering applies where the gateway sends tier metadata (intl).
+  // Credit labels and free-vs-paid de-dup apply to every site: CN also ships a
+  // promoted free twin ("Hy4 flash") alongside its paid id.
+  const hasTiers = Array.isArray(data.modelTiers)
+  const hasPromotions = Array.isArray(data.modelPromotions)
+  const blocked = hasTiers ? paywallIds(data) : new Set<string>()
+  const promoted = promotedIds(data)
 
   const agents = Array.isArray(data.agents)
     ? (data.agents as Array<Record<string, unknown>>)
@@ -144,9 +175,9 @@ export function parseModelConfig(body: unknown): readonly CatalogModel[] {
     }
   }
 
-  const out: CatalogModel[] = []
+  const parsed: CatalogModel[] = []
   for (const raw of allowed) {
-    if (typeof raw !== "string") continue
+    if (typeof raw !== "string" || blocked.has(raw)) continue
     const model = byId.get(raw)
     if (!model) continue
 
@@ -160,16 +191,36 @@ export function parseModelConfig(body: unknown): readonly CatalogModel[] {
         : null
     const { efforts, defaultEffort } = readEfforts(reasoning)
 
-    out.push({
+    parsed.push({
       id: raw,
-      name: text(model.name) ?? raw,
+      name: text(model.name) ?? raw, // base name; credit suffix added after de-dup
       credits: shortCredits(model.credits),
       imageInput: model.supportsImages === true,
       efforts,
       defaultEffort,
     })
   }
-  return out
+
+  let result = parsed
+  if (hasPromotions) {
+    // Same display name (e.g. two "Hy4 flash" ids): WorkBuddy keeps the one with
+    // an active promotion (the free trial) and drops the paid twin. Compare base
+    // names; the credit suffix is appended after de-dup.
+    const byName = new Map<string, CatalogModel>()
+    for (const model of parsed) {
+      const existing = byName.get(model.name)
+      if (!existing) { byName.set(model.name, model); continue }
+      const takeNew = promoted.has(model.id) && !promoted.has(existing.id)
+      if (takeNew) byName.set(model.name, model)
+    }
+    result = [...byName.values()]
+  }
+
+  // WorkBuddy shows the credit multiplier in the picker; match its labels on
+  // every site (CN and intl) so the provider mirrors what the client displays.
+  return result.map((m) =>
+    m.credits !== null ? { ...m, name: `${m.name}(x${m.credits.toFixed(2)})` } : m,
+  )
 }
 
 /**
@@ -179,13 +230,22 @@ export function parseModelConfig(body: unknown): readonly CatalogModel[] {
  */
 export async function fetchCatalog(deps: FetchCatalogDeps): Promise<readonly CatalogModel[]> {
   const fetchImpl = deps.fetchImpl ?? fetch
-  const timeout = AbortSignal.timeout(deps.timeoutMs ?? DEFAULT_TIMEOUT_MS)
-  const signal = deps.signal ? AbortSignal.any([deps.signal, timeout]) : timeout
+  const timeout = timeoutSignal(deps.timeoutMs ?? DEFAULT_TIMEOUT_MS)
+  const signal = deps.signal ? anySignal([deps.signal, timeout]) : timeout
   const url = `${deps.auth.endpoint}/v3/config`
 
+  const headers = apiHeaders(deps.auth, { accept: "application/json" })
+  // The international gateway serves WorkBuddy's catalogue (with tier/promo
+  // metadata) only when the caller identifies as the WorkBuddy IDE. Without
+  // these headers it returns the narrower CLI catalogue with no Pro-only info.
+  if (deps.site === "intl") {
+    headers["x-ide-type"] = "WorkBuddy"
+    headers["x-product"] = "WorkBuddy"
+    headers["user-agent"] = "WorkBuddy/5.11.4"
+  }
   const response = await fetchImpl(url, {
     method: "GET",
-    headers: apiHeaders(deps.auth, { accept: "application/json" }),
+    headers,
     signal,
   })
 

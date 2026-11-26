@@ -1,6 +1,6 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http"
 import type { Site } from "../shared"
-import { apiHeaders } from "./headers"
+import { apiHeaders, channelHeaders } from "./headers"
 import { SITE_ENDPOINTS } from "./login"
 import type { TokenStore } from "./token-store"
 
@@ -40,11 +40,44 @@ export interface HandleRequestDeps {
   log?: (message: string) => void
 }
 
-/** Force `stream:true` on the chat body so the upstream always answers with SSE. */
-function withStream(body: string): string {
+/** Official identity the intl gateway requires as the first system message. */
+const SYSTEM_PROMPT = "You are CodeBuddy Code."
+
+/** Extract plain text from a message content (string or multimodal text parts). */
+function identityText(content: unknown): string | null {
+  if (typeof content === "string") return content
+  if (Array.isArray(content)) {
+    return content
+      .filter((part) => part && typeof part === "object" && (part as { type?: unknown }).type === "text")
+      .map((part) => String((part as { text?: unknown }).text ?? ""))
+      .join("\n")
+  }
+  return null
+}
+
+/**
+ * Force `stream:true`, and for intl prepend the official system prompt the
+ * gateway's channel verification checks for. A caller-supplied leading system
+ * message is kept as-is; only the identity prompt is prepended when missing.
+ */
+function prepareBody(body: string, site: Site): string {
   try {
     const parsed = JSON.parse(body) as Record<string, unknown>
     parsed.stream = true
+    if (site === "intl" && Array.isArray(parsed.messages) && parsed.messages.length > 0) {
+      const messages = parsed.messages as Array<{ role?: unknown; content?: unknown }>
+      // The gate requires the identity specifically as a *system* message; a
+      // developer-role copy does not satisfy it (verified against the gateway).
+      // Normalise content (string or multimodal text parts) and compare exactly:
+      // a loose substring would mistake an unrelated message mentioning the
+      // name for the identity, while a bare `===` would miss trailing whitespace
+      // and inject a duplicate. The identity may sit at any position — only
+      // duplicates are avoided (verified against the gateway).
+      const hasIdentity = messages.some(
+        (m) => m?.role === "system" && identityText(m?.content)?.trim() === SYSTEM_PROMPT,
+      )
+      if (!hasIdentity) parsed.messages = [{ role: "system", content: SYSTEM_PROMPT }, ...messages]
+    }
     return JSON.stringify(parsed)
   } catch {
     return body
@@ -85,7 +118,7 @@ export async function handleRequest(
   const url = upstreamUrl(site, pathAfterV2)
   const readBody = deps.readBody ?? (() => Promise.resolve(""))
   const raw = await readBody(req)
-  const body = withStream(raw)
+  const body = prepareBody(raw, site)
   const doFetch = deps.fetchImpl ?? fetch
 
   let upstream: Response
@@ -94,6 +127,8 @@ export async function handleRequest(
       method: "POST",
       headers: {
         ...apiHeaders(auth, { accept: "text/event-stream" }),
+        // Only intl is channel-gated; keep CN's existing header set untouched.
+        ...(site === "intl" ? channelHeaders() : {}),
         "Content-Type": "application/json",
       },
       body,

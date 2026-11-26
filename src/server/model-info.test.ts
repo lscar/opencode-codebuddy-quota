@@ -56,6 +56,20 @@ describe("buildModels", () => {
     expect(names["glm-5.3-flash"]).toBe("GLM-5.3-Flash")
   })
 
+  it("does not double-append the factor when catalog already labelled colliding names", () => {
+    // catalog.ts labels names when promotions are present; if two such labelled
+    // names still collide (same base + same credits), dedupeNames must not add a
+    // second (xN) suffix.
+    const catalogWithDupes: typeof catalog = [
+      model("hy4std", "Twin(x0.29)", 0.29),
+      model("hy4flash", "Twin(x0.29)", 0.29),
+    ]
+    const built = buildModels({ catalog: catalogWithDupes, config: DEFAULT_CONFIG, modelsDev: null, log: () => {} })
+    const names = built.map((m) => m.name)
+    expect(names).toEqual(["Twin(x0.29)", "Twin(x0.29)"])
+    expect(names.some((n) => n.includes(")("))).toBe(false)
+  })
+
   it("offers both Hy4 flash ids, the free one priced at zero", () => {
     const built = run()
     expect(built.find((m) => m.id === "hy4flash-free")!.cost).toEqual([

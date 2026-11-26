@@ -12,30 +12,12 @@ import { latestTaggedVersion } from "./src/server/package-version"
 import { createProxy } from "./src/server/proxy"
 import { createQuotaSource } from "./src/server/quota-source"
 import { makeRpcHandlers } from "./src/server/rpc-handlers"
+import { anySignal, timeoutSignal } from "./src/server/signal"
 import { createTokenStore } from "./src/server/token-store"
 import { fetchUpstream } from "./src/server/upstream"
 
 const PROXY_PORT = 7688
 const UPSTREAM_TIMEOUT_MS = 15_000
-
-/** AbortSignal.any is not guaranteed in every runtime OpenCode embeds. */
-function anySignal(signals: AbortSignal[]): AbortSignal {
-  for (const signal of signals) {
-    if (signal.aborted) return AbortSignal.abort(signal.reason)
-  }
-  const controller = new AbortController()
-  const listeners = signals.map((signal) => {
-    const handler = () => controller.abort(signal.reason)
-    signal.addEventListener("abort", handler, { once: true })
-    return { signal, handler }
-  })
-  // When one signal wins, detach from the others so a long-lived parent (e.g.
-  // context.signal) does not accumulate listeners across many requests.
-  controller.signal.addEventListener("abort", () => {
-    for (const { signal, handler } of listeners) signal.removeEventListener("abort", handler)
-  }, { once: true })
-  return controller.signal
-}
 
 export default Plugin.define({
   id: "codebuddy-quota-v2",
@@ -48,7 +30,7 @@ export default Plugin.define({
 
     const source = createQuotaSource({
       readForSite: (site, signal) => {
-        const timeout = AbortSignal.timeout(UPSTREAM_TIMEOUT_MS)
+        const timeout = timeoutSignal(UPSTREAM_TIMEOUT_MS)
         return store
           .ensureFresh(site)
           .then((auth) =>
@@ -73,55 +55,82 @@ export default Plugin.define({
      * catalog with that site's JWT and write a dedicated provider block. The
      * legacy `codebuddy` provider is never touched.
      */
-    const importModels = async () => {
+    /** Shared inputs for a model import, resolved once per import pass. */
+    const importDeps = async () => {
       const config = loadConfig()
       const modelsDev = readModelsDevCatalog()
       const latest = await latestTaggedVersion()
-      const packageVersion = latest ?? config.package_version
-      const target = opencodeConfigPath()
-      for (const site of ["cn", "intl"] as Site[]) {
-        const auth = store.get(site)
-        if (!auth) {
-          log(`no ${site} account; skipping its model import`)
-          continue
-        }
-        try {
-          const catalog = await fetchCatalog({ site, auth })
-          const models = buildModels({ catalog, config, modelsDev, log })
-          if (models.length === 0) {
-            log(`${site} catalog produced no models; skipping write`)
-            continue
-          }
-          const result = writeProvider({
-            jsoncPath: target,
-            providerId: site === "cn" ? "codebuddy-cn" : "codebuddy-intl",
-            models,
-            packageVersion,
-            proxyPort: PROXY_PORT,
-            backup: (path, content) => {
-              const backupPath = `${path}.codebuddy-quota-v2.bak`
-              try {
-                // Only the first backup is kept, so the pre-plugin original survives.
-                if (!existsSync(backupPath)) writeFileSync(backupPath, content, "utf8")
-              } catch {
-                // Backup is best-effort; never block the provider write.
-              }
-            },
-          })
-          if (result.status === "skipped") log(`${site} provider write skipped: ${result.reason}`)
-        } catch (error) {
-          log(`${site} model import failed: ${String((error as Error)?.message ?? error)}`)
-        }
+      return {
+        target: opencodeConfigPath(),
+        config,
+        modelsDev,
+        packageVersion: latest ?? config.package_version,
       }
     }
-    void importModels()
 
-    const handlers = makeRpcHandlers({ store, source, log })
+    /** Import one site's models; reused after login so a new account lands in config. */
+    const importSite = async (
+      site: Site,
+      deps: Awaited<ReturnType<typeof importDeps>>,
+    ) => {
+      const auth = store.get(site)
+      if (!auth) {
+        log(`no ${site} account; skipping its model import`)
+        return
+      }
+      try {
+        const catalog = await fetchCatalog({ site, auth })
+        const models = buildModels({ catalog, config: deps.config, modelsDev: deps.modelsDev, log })
+        if (models.length === 0) {
+          log(`${site} catalog produced no models; skipping write`)
+          return
+        }
+        const result = writeProvider({
+          jsoncPath: deps.target,
+          providerId: site === "cn" ? "codebuddy-cn" : "codebuddy-intl",
+          models,
+          packageVersion: deps.packageVersion,
+          proxyPort: PROXY_PORT,
+          backup: (path, content) => {
+            const backupPath = `${path}.codebuddy-quota-v2.bak`
+            try {
+              // Only the first backup is kept, so the pre-plugin original survives.
+              if (!existsSync(backupPath)) writeFileSync(backupPath, content, "utf8")
+            } catch {
+              // Backup is best-effort; never block the provider write.
+            }
+          },
+        })
+        if (result.status === "skipped") log(`${site} provider write skipped: ${result.reason}`)
+        else if (result.status === "written") log(`${site} provider written`)
+      } catch (error) {
+        log(`${site} model import failed: ${String((error as Error)?.message ?? error)}`)
+      }
+    }
+
+    const importModels = async () => {
+      const deps = await importDeps()
+      for (const site of ["cn", "intl"] as Site[]) await importSite(site, deps)
+    }
+    // Fire-and-forget: keep a future init failure from becoming an unhandled
+    // rejection (importSite already catches its own site-level errors).
+    void importModels().catch((error) =>
+      log(`model import failed: ${String((error as Error)?.message ?? error)}`),
+    )
+
+    const handlers = makeRpcHandlers({
+      store,
+      source,
+      log,
+      afterLogin: async (site) => importSite(site, await importDeps()),
+    })
     const registration = await ctx.rpc.register(CodebuddyQuota, handlers)
 
     return () => {
       registration.dispose()
-      void proxy.close()
+      void proxy.close().catch((error) =>
+        log(`proxy close failed: ${String((error as Error)?.message ?? error)}`),
+      )
     }
   },
 })

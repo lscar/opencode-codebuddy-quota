@@ -27,7 +27,8 @@ const num = (v: unknown): number => {
  * Personal (non-enterprise) accounts cannot use get-enterprise-user-usage: the
  * gateway rejects a personal JWT with 400/403. Their quota lives in resource
  * packages returned by get-user-resource. Sum every package's cycle figures
- * (the user chose "sum all packages") and use the earliest cycle end as reset.
+ * (the user chose "sum all packages"), but take the cycle boundaries from the
+ * main plan; fall back to the earliest cycle end when no main plan is present.
  */
 async function fetchUserResource(
   auth: SiteAuth,
@@ -56,12 +57,24 @@ async function fetchUserResource(
   let remaining = 0
   let total = 0
   const ends: string[] = []
+  // The cycle boundaries (progress bar + reset time) follow the main plan, not
+  // whichever bonus package happens to expire first. A main plan is the base
+  // subscription: its name says "Plan"/"Subscription", or its CapacityType is 4
+  // (observed on the free monthly plan). Bonus packs are CapacityType 1.
+  let main: Record<string, unknown> | null = null
   for (const a of accounts) {
     const rem = num(a.CycleCapacityRemainPrecise ?? a.CapacityRemainPrecise)
     const size = num(a.CycleCapacitySizePrecise ?? a.CapacitySizePrecise)
     remaining += rem
     total += size
     if (typeof a.CycleEndTime === "string") ends.push(a.CycleEndTime)
+    if (
+      !main &&
+      (/plan|subscription|主套餐|基础套餐/i.test(String(a.PackageName ?? "")) ||
+        num(a.CapacityType) === 4)
+    ) {
+      main = a
+    }
   }
   if (!Number.isFinite(total) || total <= 0) throw new Error("upstream payload is missing capacity figures")
   // Sort by parsed time, not lexical order (formats may include T/ms/timezone).
@@ -70,14 +83,21 @@ async function fetchUserResource(
     .filter((e) => Number.isFinite(e.t))
     .sort((a, b) => a.t - b.t)
   const earliest = sorted[0]?.s ?? null
+  const mainEnd = main && typeof main.CycleEndTime === "string" ? main.CycleEndTime : null
+  const reset = mainEnd ?? earliest
+  // Keep the start from the same source as the end. If the main plan has no end
+  // (so reset falls back to the earliest bonus package), a main-only start would
+  // pair boundaries from different packages and skew the time ratio.
+  const cycleStart =
+    mainEnd !== null && main && typeof main.CycleStartTime === "string" ? main.CycleStartTime : null
   const at = opts.now ? opts.now() : Date.now()
   return {
     remaining: Math.max(0, remaining),
     used: Math.max(0, total - remaining),
     total,
-    cycleStart: null,
-    cycleEnd: earliest,
-    resetAt: earliest,
+    cycleStart,
+    cycleEnd: reset,
+    resetAt: reset,
     fetchedAt: new Date(at).toISOString(),
   }
 }

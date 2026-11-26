@@ -46,6 +46,11 @@ function dedupeNames(models: readonly ImportedModel[], credits: ReadonlyMap<stri
 
   return models.map((model) => {
     if ((counts.get(model.name) ?? 0) < 2) return model
+    // catalog.ts may already have appended a credit label; never stack a second.
+    // Tolerate case/space variants. Known limit: an upstream name that genuinely
+    // ends in "(xN)" would be skipped here too — acceptable while catalog.ts is
+    // the only producer of such labels and marks them this way.
+    if (/\(\s*[xX]\s*[\d.]+\)\s*$/.test(model.name)) return model
 
     const factor = credits.get(model.id)
     if (factor === null || factor === undefined) return model

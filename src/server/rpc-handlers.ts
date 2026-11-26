@@ -21,6 +21,11 @@ export interface HandlerDeps {
   performLogin?: (site: Site) => Promise<SiteAuth>
   /** Injectable gate; defaults to per-site single-flight. */
   loginGate?: LoginGate
+  /**
+   * Best-effort hook run after a successful login so the freshly added account
+   * can re-import its provider models. A failure here never fails the login.
+   */
+  afterLogin?: (site: Site) => Promise<void>
 }
 
 /**
@@ -56,7 +61,20 @@ export function makeRpcHandlers(deps: HandlerDeps): RpcHandlers {
         try {
           const auth = await performLogin(site)
           deps.store.archive(auth)
+          // A read before login likely armed the 30s failure cooldown. Clear it
+          // so the GUI's post-login refresh retries upstream with the new token
+          // immediately instead of replaying the old "needs login" verdict.
+          deps.source.clearFailure(site)
           deps.log(`${site} login complete`)
+          // Re-import this account's models: a login after startup is the moment
+          // a previously missing site becomes importable. Fire-and-forget — the
+          // registry/catalog fetch can take tens of seconds, and a best-effort
+          // re-import must neither block the login response nor fail it.
+          if (deps.afterLogin) {
+            void deps.afterLogin(site).catch((error) => {
+              deps.log(`${site} post-login model re-import failed: ${String((error as Error)?.message ?? error)}`)
+            })
+          }
           return { ok: true, error: null }
         } catch (error) {
           const message = String((error as Error)?.message ?? error)

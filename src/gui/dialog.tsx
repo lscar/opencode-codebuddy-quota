@@ -4,7 +4,7 @@ import type { Ui } from "@opencode/plugin/gui"
 import type { Site, SiteInfo } from "../shared"
 import { formatCredits, paceColor, paceLabel, type PaceLabel } from "./pace"
 import type { Quota } from "./quota"
-import { freshness, paceHint, pctInt } from "./dialog-helpers"
+import { freshness, paceHint, pctInt, timeMarkerLeft } from "./dialog-helpers"
 
 export interface QuotaDialogProps {
   quota: Quota
@@ -183,7 +183,7 @@ export function QuotaDialog(props: QuotaDialogProps): JSX.Element {
               <div
                 style={{
                   position: "absolute", top: "-3px", bottom: "-3px",
-                  left: `${Math.max(0, Math.min(100, 100 - (q().timePct ?? 0)))}%`,
+                  left: `${timeMarkerLeft(q().timePct)}%`,
                   width: "2px", background: "#fff", "border-radius": "2px", opacity: "0.9",
                 }}
               />

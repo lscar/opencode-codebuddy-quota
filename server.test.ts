@@ -65,6 +65,7 @@ function fakeStore(opts: {
 function fakeSource(opts: {
   signalSeen?: (s: AbortSignal) => void
   onRead?: () => void
+  onClearFailure?: (s: Site) => void
 } = {}) {
   return {
     read: async (_site: Site, signal?: AbortSignal) => {
@@ -72,6 +73,7 @@ function fakeSource(opts: {
       opts.onRead?.()
       return reading()
     },
+    clearFailure: (s: Site) => opts.onClearFailure?.(s),
   } as unknown as QuotaSource
 }
 
@@ -140,5 +142,86 @@ describe("RPC handler assembly", () => {
     const out = await handlers.login({ site: "intl" })
     expect(out.ok).toBe(false)
     expect(out.error).toContain("browser closed")
+  })
+
+  it("re-imports models after a successful login", async () => {
+    let reimports = 0
+    const handlers = makeRpcHandlers({
+      store: fakeStore(), source: fakeSource(), log: () => {},
+      performLogin: async () => validAuth("intl"),
+      afterLogin: async () => { reimports += 1 },
+    })
+    const out = await handlers.login({ site: "intl" })
+    expect(out.ok).toBe(true)
+    expect(reimports).toBe(1)
+  })
+
+  it("does not block the login response on the post-login re-import", async () => {
+    let release: () => void = () => {}
+    const handlers = makeRpcHandlers({
+      store: fakeStore(), source: fakeSource(), log: () => {},
+      performLogin: async () => validAuth("intl"),
+      afterLogin: () => new Promise<void>((r) => { release = r }),
+    })
+    const timed = await Promise.race([
+      handlers.login({ site: "intl" }),
+      new Promise<{ ok: boolean; error: string | null }>((r) =>
+        setTimeout(() => r({ ok: false, error: "waited for re-import" }), 50)),
+    ])
+    expect(timed.ok).toBe(true)
+    release() // let the pending re-import settle so no test leaks
+  })
+
+  it("does not re-import models when login fails", async () => {
+    let reimports = 0
+    const handlers = makeRpcHandlers({
+      store: fakeStore(), source: fakeSource(), log: () => {},
+      performLogin: async () => { throw new Error("browser closed") },
+      afterLogin: async () => { reimports += 1 },
+    })
+    const out = await handlers.login({ site: "intl" })
+    expect(out.ok).toBe(false)
+    expect(reimports).toBe(0)
+  })
+
+  it("clears the site's failure cooldown after a successful login", async () => {
+    let cleared: Site | null = null as Site | null
+    const handlers = makeRpcHandlers({
+      store: fakeStore(),
+      source: fakeSource({ onClearFailure: (s) => { cleared = s } }),
+      log: () => {},
+      performLogin: async () => validAuth("intl"),
+    })
+    const out = await handlers.login({ site: "intl" })
+    expect(out.ok).toBe(true)
+    expect(cleared).toBe("intl")
+  })
+
+  it("does not clear the failure cooldown when login fails", async () => {
+    let cleared = false
+    const handlers = makeRpcHandlers({
+      store: fakeStore(),
+      source: fakeSource({ onClearFailure: () => { cleared = true } }),
+      log: () => {},
+      performLogin: async () => { throw new Error("browser closed") },
+    })
+    const out = await handlers.login({ site: "intl" })
+    expect(out.ok).toBe(false)
+    expect(cleared).toBe(false)
+  })
+
+  it("keeps login successful when the post-login re-import throws", async () => {
+    const logs: string[] = []
+    const handlers = makeRpcHandlers({
+      store: fakeStore(), source: fakeSource(), log: (m) => logs.push(m),
+      performLogin: async () => validAuth("intl"),
+      afterLogin: async () => { throw new Error("catalog fetch failed") },
+    })
+    const out = await handlers.login({ site: "intl" })
+    expect(out.ok).toBe(true)
+    expect(out.error).toBeNull()
+    // The re-import is fire-and-forget; its catch runs in a later microtask.
+    await new Promise((r) => setTimeout(r, 0))
+    expect(logs.some((m) => m.includes("post-login model re-import failed"))).toBe(true)
   })
 })

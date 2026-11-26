@@ -5,6 +5,14 @@ import type { Quota } from "./quota"
 export const pctInt = (v: number | null): string =>
   v === null || !Number.isFinite(v) ? "—" : `${Math.max(0, Math.min(100, Math.round(v)))}%`
 
+/**
+ * Left offset of the elapsed-time marker on the shared bar. Both the credit
+ * fill and the time marker grow from the left edge, so the marker sits at the
+ * time percentage itself, not at its mirror.
+ */
+export const timeMarkerLeft = (timePct: number | null): number =>
+  timePct === null || !Number.isFinite(timePct) ? 0 : Math.max(0, Math.min(100, timePct))
+
 /** Direction + magnitude copy for the pace hint, driven only by diff's sign. */
 export const paceHint = (diff: number | null): string => {
   if (diff === null || !Number.isFinite(diff)) return ""

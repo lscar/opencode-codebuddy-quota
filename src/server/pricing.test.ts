@@ -82,6 +82,34 @@ describe("explicit mappings", () => {
     expect(c.cache.write).toBe(0)
     expect(c.cache.read).toBeCloseTo(0.003, 6)
   })
+
+  it("falls back to zero when cache.write is an object-shaped tier price (models.dev v3)", () => {
+    // Real v3 catalog: moonshotai/kimi-k3 has cache.write = {"5m":3,"1h":6}.
+    // A non-number must never be serialised into the provider's cost.cache.write.
+    const tiered = {
+      moonshotai: {
+        models: {
+          "kimi-k3": {
+            cost: { text: { input: { price: 3, cache: { read: 0.3, write: { "5m": 3, "1h": 6 } } }, output: { price: 15 } } },
+          },
+        },
+      },
+    } as unknown as ModelsDevCatalog
+    const [c] = resolveCost(m("kimi-k3"), mapping("moonshotai", "kimi-k3"), tiered, quiet)
+    expect(c.input).toBe(3)
+    expect(c.output).toBe(15)
+    expect(c.cache.read).toBeCloseTo(0.3, 6)
+    expect(c.cache.write).toBe(0)
+  })
+
+  it("falls back to zero on a non-finite cache.read", () => {
+    const bad = {
+      p: { models: { x: { cost: { text: { input: { price: 1, cache: { read: "NaN" as never } }, output: { price: 2 } } } } } },
+    } as unknown as ModelsDevCatalog
+    const [c] = resolveCost(m("x"), mapping("p", "x"), bad, quiet)
+    expect(c.cache.read).toBe(0)
+    expect(c.cache.write).toBe(0)
+  })
 })
 
 describe("lookup failures", () => {

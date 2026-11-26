@@ -35,6 +35,29 @@ export function apiHeaders(
   return headers
 }
 
+/**
+ * The international gateway verifies the full official-CLI header set on every
+ * chat request. CodeBuddy CN is not gated; only intl needs these. The
+ * X-Conversation-* family is mandatory — any subset is rejected with 11128.
+ */
+export function channelHeaders(): Record<string, string> {
+  const messageId = randomBytes(16).toString("hex")
+  return {
+    "x-app": "cli",
+    "x-ide-type": "CLI",
+    "x-ide-name": "CLI",
+    "x-ide-version": CLI_VERSION,
+    "x-private-data": "false",
+    "x-agent-intent": "craft",
+    "x-agent-purpose": "conversation",
+    "x-conversation-id": randomBytes(16).toString("hex"),
+    // The official client mirrors the request id from the message id.
+    "x-request-id": messageId,
+    "x-conversation-request-id": messageId,
+    "x-conversation-message-id": messageId,
+  }
+}
+
 /** Headers for the proprietary token-refresh endpoint; no bearer token. */
 export function refreshHeaders(auth: SiteAuth): Record<string, string> {
   const headers: Record<string, string> = {

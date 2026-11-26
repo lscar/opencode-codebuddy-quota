@@ -93,9 +93,9 @@ describe("personal account quota (get-user-resource)", () => {
         Data: {
           TotalDosage: 380,
           Accounts: [
-            { PackageName: "Bonus", CycleCapacityRemainPrecise: "250", CycleCapacitySizePrecise: "250", CycleEndTime: "2026-12-03 14:56:36" },
-            { PackageName: "Free", CycleCapacityRemainPrecise: "97.21", CycleCapacitySizePrecise: "100", CycleEndTime: "2026-11-30 23:59:59" },
-            { PackageName: "Bonus", CycleCapacityRemainPrecise: "30", CycleCapacitySizePrecise: "30", CycleEndTime: "2026-12-20 06:35:59" },
+            { PackageName: "Bonus Pack", CapacityType: 1, CycleStartTime: "2026-11-05 14:56:37", CycleCapacityRemainPrecise: "250", CycleCapacitySizePrecise: "250", CycleEndTime: "2026-11-20 14:56:36" },
+            { PackageName: "Free Plan Subscription", CapacityType: 4, CycleStartTime: "2026-11-01 00:00:00", CycleCapacityRemainPrecise: "97.21", CycleCapacitySizePrecise: "100", CycleEndTime: "2026-11-30 23:59:59" },
+            { PackageName: "Bonus Pack", CapacityType: 1, CycleStartTime: "2026-11-20 06:36:00", CycleCapacityRemainPrecise: "30", CycleCapacitySizePrecise: "30", CycleEndTime: "2026-12-20 06:35:59" },
           ],
         },
       },
@@ -118,8 +118,47 @@ describe("personal account quota (get-user-resource)", () => {
     expect(r.remaining).toBeCloseTo(377.21, 2)
     expect(r.total).toBe(380)
     expect(r.used).toBeCloseTo(2.79, 2)
-    // Next expiry = earliest CycleEndTime among packages.
+    // Cycle boundaries come from the main plan (Free Plan Subscription), not
+    // the earliest-expiring bonus package.
+    expect(r.cycleStart).toBe("2026-11-01 00:00:00")
     expect(r.cycleEnd).toBe("2026-11-30 23:59:59")
+    expect(r.resetAt).toBe("2026-11-30 23:59:59")
+  })
+
+  it("keeps cycle boundaries from one source when the main plan has no end time", async () => {
+    // Main plan declares a start but no end; the reset falls back to the earliest
+    // bonus package. cycleStart must fall back too, or start/end come from
+    // different packages and the time ratio can exceed 100%.
+    const fetchImpl = ok({
+      Response: {
+        Data: {
+          Accounts: [
+            { PackageName: "Bonus Pack", CapacityType: 1, CycleCapacityRemainPrecise: "30", CycleCapacitySizePrecise: "30", CycleEndTime: "2026-11-20 14:56:36" },
+            { PackageName: "Free Plan Subscription", CapacityType: 4, CycleCapacityRemainPrecise: "97.21", CycleCapacitySizePrecise: "100", CycleStartTime: "2026-11-01 00:00:00" },
+          ],
+        },
+      },
+    })
+    const r = await fetchUpstream({ auth: personal, fetchImpl })
+    expect(r.cycleStart).toBeNull()
+    expect(r.cycleEnd).toBe("2026-11-20 14:56:36")
+  })
+
+  it("falls back to the earliest package end when no main plan is present", async () => {
+    const fetchImpl = ok({
+      Response: {
+        Data: {
+          Accounts: [
+            { PackageName: "Bonus Pack", CapacityType: 1, CycleCapacityRemainPrecise: "30", CycleCapacitySizePrecise: "30", CycleEndTime: "2026-11-20 14:56:36" },
+            { PackageName: "Bonus Pack", CapacityType: 1, CycleCapacityRemainPrecise: "50", CycleCapacitySizePrecise: "50", CycleEndTime: "2026-12-20 06:35:59" },
+          ],
+        },
+      },
+    })
+    const r = await fetchUpstream({ auth: personal, fetchImpl })
+    expect(r.cycleStart).toBeNull()
+    expect(r.cycleEnd).toBe("2026-11-20 14:56:36")
+    expect(r.resetAt).toBe("2026-11-20 14:56:36")
   })
 
   it("still uses the enterprise endpoint for an enterprise account", async () => {

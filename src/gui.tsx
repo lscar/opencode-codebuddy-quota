@@ -45,8 +45,10 @@ export default Plugin.define({
       void store.refresh({ maxAgeMs: HOVER_MIN_AGE_MS, site: store.read().site })
     }
     const SITE_LABEL = { cn: "国内站", intl: "国际站" } as const
-    // Any site needing login shows an amber dot outside the capsule.
-    const needsLogin = () => store.read().sites.some((s) => !s.available)
+    // Any site needing login shows an amber dot outside the capsule. Read the
+    // quota signal, not store.read(): the latter is a plain variable that Solid
+    // never tracks, so the dot froze on the first "needs login" verdict.
+    const needsLogin = () => quota().sites.some((s) => !s.available)
 
     // The capsule lives on the session header row — the only surface the
     // side-tabs layout leaves a plugin. See the design notes for why.

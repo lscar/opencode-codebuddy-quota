@@ -95,6 +95,17 @@ describe("time progress is measured from the cycle start", () => {
   it("is null when the cycle dates are unusable", () => {
     expect(q({ cycleStart: null, cycleEnd: null }).timePct).toBeNull()
   })
+
+  it("clamps timePct to 0..100 when the clock is outside the cycle", () => {
+    const before = q({ fetchedAt: new Date(Date.parse("2026-10-01T00:00:00Z")).toISOString() })
+    const after = q({ fetchedAt: new Date(Date.parse("2026-12-01T00:00:00Z")).toISOString() })
+    expect(before.timePct).toBe(0)
+    expect(after.timePct).toBe(100)
+    // diff shares the same scale and must not report a runaway pace.
+    expect(before.diff).not.toBeNull()
+    expect(before.diff!).toBeLessThanOrEqual(100)
+    expect(after.diff!).toBeGreaterThanOrEqual(-100)
+  })
 })
 
 describe("capsule and marker share one scale", () => {

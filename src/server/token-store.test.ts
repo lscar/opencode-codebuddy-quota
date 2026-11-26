@@ -219,6 +219,20 @@ describe("createTokenStore.ensureFresh", () => {
     expect(store.refreshFailed("cn")).toBe(false)
   })
 
+  it("clears refreshFailed when a fresh account is archived after a failed refresh", async () => {
+    const fetchImpl = (async () =>
+      new Response(JSON.stringify({ code: 1, msg: "token revoked" }), {
+        status: 200, headers: { "content-type": "application/json" },
+      })) as unknown as typeof fetch
+    const store = createTokenStore({ fetchImpl, now: () => 0, persist: () => {}, load: emptyCache })
+    store.archive(auth({ expiresAt: -1 }))
+    await expect(store.ensureFresh("cn")).rejects.toThrow()
+    expect(store.refreshFailed("cn")).toBe(true)
+    // User re-logs in with a brand-new, long-lived token.
+    store.archive(auth({ accessToken: "a-new", refreshToken: "r-new", expiresAt: 9_000_000 }))
+    expect(store.refreshFailed("cn")).toBe(false)
+  })
+
   it("single-flights concurrent refreshes", async () => {
     let calls = 0
     const fetchImpl = (async () => {

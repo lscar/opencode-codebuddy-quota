@@ -57,27 +57,29 @@ export const DEFAULT_CONFIG: QuotaConfig = {
     "hy4-preview": { provider: "tencent-tokenhub", model: "hy4-preview" },
     // SG variant shares the same underlying model; models.dev has no separate id.
     "deepseek-v4.1-flash-sg": { provider: "deepseek", model: "deepseek-v4-flash" },
-    "gpt-6-astra": { provider: "kunavo", model: "gpt-6-astra" },
-    "gpt-6.1-sol": { provider: "commandcode", model: "gpt-6.1-sol" },
-    // zerogpu does not carry these ids; openai has exact entries.
+    // models.dev v3 carries all GPT ids under openai; use the official vendor.
+    "gpt-6-astra": { provider: "openai", model: "gpt-6-astra" },
+    "gpt-6.1-sol": { provider: "openai", model: "gpt-6.1-sol" },
     "gpt-6-sol": { provider: "openai", model: "gpt-6-sol" },
     "gpt-6-luna": { provider: "openai", model: "gpt-6-luna" },
     "gpt-5.6-sol": { provider: "openai", model: "gpt-5.6-sol" },
     "gpt-5.6-terra": { provider: "openai", model: "gpt-5.6-terra" },
     "gpt-5.5": { provider: "openai", model: "gpt-5.5" },
     "gpt-5.4": { provider: "openai", model: "gpt-5.4" },
-    "gpt-5.6-luna": { provider: "zerogpu", model: "gpt-5.6-luna" },
-    "grok-4.7": { provider: "cheapaimodel", model: "grok-4.7" },
+    "gpt-5.6-luna": { provider: "openai", model: "gpt-5.6-luna" },
+    // Official vendor mappings: reseller entries carry distorted prices.
+    "grok-4.7": { provider: "xai", model: "grok-4.7" },
     "gemini-3.8-flash": { provider: "google", model: "gemini-3.8-flash" },
-    "glm-5.3": { provider: "greenpt", model: "glm-5.3" },
+    "glm-5.3": { provider: "zhipuai", model: "glm-5.3" },
     "glm-5.2": { provider: "zhipuai", model: "glm-5.2" },
-    // wafer.ai ids are capitalised; use exact ids.
-    "kimi-k3.1-pro": { provider: "wafer.ai", model: "Kimi-K3.1-Pro" },
-    "kimi-k3": { provider: "wafer.ai", model: "Kimi-K3" },
-    // wafer.ai has no highspeed variant; moonshotai carries the exact id.
+    // moonshotai is the official vendor; wafer.ai resells kimi at skewed prices.
+    "kimi-k3.1-pro": { provider: "moonshotai", model: "kimi-k3.1-pro" },
+    "kimi-k3": { provider: "moonshotai", model: "kimi-k3" },
     "kimi-k3.1-pro-highspeed": { provider: "moonshotai", model: "kimi-k3.1-pro-highspeed" },
   },
-  excluded_models: ["space-bunny", "hy3", "hy3-x"],
+  // auto/max-model are virtual routing tiers with no models.dev entity; exclude
+  // them explicitly rather than relying on the no-mapping skip.
+  excluded_models: ["space-bunny", "hy3", "hy3-x", "auto", "max-model"],
   package_version: DEFAULT_PACKAGE_VERSION,
 }
 

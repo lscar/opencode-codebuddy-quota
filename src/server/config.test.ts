@@ -150,7 +150,7 @@ describe("loadConfig", () => {
     expect(DEFAULT_CONFIG.models.hy3).toBeDefined()
     // Space-Bunny is the same model as minimax-m3.1-flash under another id.
     expect(DEFAULT_CONFIG.models["space-bunny"]).toEqual(DEFAULT_CONFIG.models["minimax-m3.1-flash"])
-    expect(DEFAULT_CONFIG.excluded_models).toEqual(["space-bunny", "hy3", "hy3-x"])
+    expect(DEFAULT_CONFIG.excluded_models).toEqual(["space-bunny", "hy3", "hy3-x", "auto", "max-model"])
   })
 
   it("ships international-site model mappings", () => {
@@ -162,18 +162,32 @@ describe("loadConfig", () => {
     }
   })
 
-  it("maps GPT ids that zerogpu does not carry to openai with exact ids", () => {
-    // zerogpu only has gpt-5.6-luna; these four must use openai or they get no price.
-    for (const id of ["gpt-6-sol", "gpt-6-luna", "gpt-5.6-sol", "gpt-5.6-terra"]) {
+  it("points vendor models at their official provider, not a reseller", () => {
+    // Reseller entries carry distorted prices (e.g. kimi-k3 at 0.6 instead of 3).
+    for (const [id, provider, model] of [
+      ["grok-4.7", "xai", "grok-4.7"],
+      ["glm-5.3", "zhipuai", "glm-5.3"],
+      ["kimi-k3", "moonshotai", "kimi-k3"],
+      ["kimi-k3.1-pro", "moonshotai", "kimi-k3.1-pro"],
+    ]) {
+      expect(DEFAULT_CONFIG.models[id]).toEqual({ provider, model })
+    }
+  })
+
+  it("maps the remaining GPT ids to openai with exact ids", () => {
+    // models.dev v3 carries all these ids under openai; use the official vendor.
+    for (const id of [
+      "gpt-6-sol", "gpt-6-luna", "gpt-5.6-sol", "gpt-5.6-terra",
+      "gpt-6.1-sol", "gpt-6-astra", "gpt-5.6-luna",
+    ]) {
       expect(DEFAULT_CONFIG.models[id].provider).toBe("openai")
       expect(DEFAULT_CONFIG.models[id].model).toBe(id)
     }
-    expect(DEFAULT_CONFIG.models["gpt-5.6-luna"].provider).toBe("zerogpu")
   })
 
-  it("uses exact capitalised wafer.ai ids and moonshotai for kimi highspeed", () => {
-    expect(DEFAULT_CONFIG.models["kimi-k3.1-pro"]).toEqual({ provider: "wafer.ai", model: "Kimi-K3.1-Pro" })
-    expect(DEFAULT_CONFIG.models["kimi-k3"]).toEqual({ provider: "wafer.ai", model: "Kimi-K3" })
+  it("uses moonshotai for all kimi models", () => {
+    expect(DEFAULT_CONFIG.models["kimi-k3.1-pro"]).toEqual({ provider: "moonshotai", model: "kimi-k3.1-pro" })
+    expect(DEFAULT_CONFIG.models["kimi-k3"]).toEqual({ provider: "moonshotai", model: "kimi-k3" })
     expect(DEFAULT_CONFIG.models["kimi-k3.1-pro-highspeed"]).toEqual({
       provider: "moonshotai", model: "kimi-k3.1-pro-highspeed",
     })

@@ -23,6 +23,12 @@ export interface Reading {
 
 export interface QuotaSource {
   read(site: Site, signal?: AbortSignal): Promise<Reading>
+  /**
+   * Called after a fresh login. Drops the failure cooldown *and* the cached
+   * reading, so the next read re-fetches with the new token instead of serving
+   * the old account's numbers from the 30-second cache.
+   */
+  clearFailure(site: Site): void
 }
 
 export interface QuotaSourceDeps {
@@ -45,9 +51,12 @@ interface SiteState {
   failedAt: number | null
   lastError: string | null
   inflight: Promise<Reading> | null
+  /** Bumped on clearFailure so a read that began with an old token cannot write
+   * its late result back into the cache after a new login. */
+  epoch: number
 }
 
-const newState = (): SiteState => ({ cached: null, failedAt: null, lastError: null, inflight: null })
+const newState = (): SiteState => ({ cached: null, failedAt: null, lastError: null, inflight: null, epoch: 0 })
 
 /** Per-site cache: one broken site cannot starve the other. */
 export function createQuotaSource(deps: QuotaSourceDeps): QuotaSource {
@@ -66,14 +75,20 @@ export function createQuotaSource(deps: QuotaSourceDeps): QuotaSource {
       : { ...EMPTY, stale: true, error }
 
   const load = async (site: Site, state: SiteState, signal?: AbortSignal): Promise<Reading> => {
+    const epoch = state.epoch
     try {
       const reading = await deps.readForSite(site, signal)
+      // A clearFailure (new login) may have happened while this request was in
+      // flight. Its result belongs to the old token — return it to this caller
+      // but never cache it, so the next read fetches with the new token.
+      if (state.epoch !== epoch) return fresh(reading)
       state.cached = { reading, at: now() }
       state.failedAt = null
       state.lastError = null
       return fresh(reading)
     } catch (error) {
       const message = String((error as Error)?.message ?? error)
+      if (state.epoch !== epoch) return fallback(state, message)
       state.failedAt = now()
       state.lastError = message
       return fallback(state, message)
@@ -81,6 +96,16 @@ export function createQuotaSource(deps: QuotaSourceDeps): QuotaSource {
   }
 
   return {
+    clearFailure(site) {
+      const state = states[site]
+      state.epoch += 1
+      state.failedAt = null
+      state.lastError = null
+      state.cached = null
+      // Release the single-flight slot so the next read starts a fresh request
+      // with the new token instead of awaiting the stale in-flight one.
+      state.inflight = null
+    },
     async read(site, signal) {
       const state = states[site]
       if (signal?.aborted) return fallback(state, String(signal.reason ?? "aborted"))
@@ -89,7 +114,14 @@ export function createQuotaSource(deps: QuotaSourceDeps): QuotaSource {
         return fallback(state, state.lastError ?? "upstream unavailable")
       }
       if (!state.inflight) {
-        state.inflight = load(site, state, signal).finally(() => { state.inflight = null })
+        // Identity check: a clearFailure may have released the slot and a newer
+        // request taken it while this one was still in flight. Only the current
+        // owner may clear it — otherwise a late old request would drop the new
+        // one's slot and cause a redundant upstream call.
+        const pending = load(site, state, signal).finally(() => {
+          if (state.inflight === pending) state.inflight = null
+        })
+        state.inflight = pending
       }
       return state.inflight
     },

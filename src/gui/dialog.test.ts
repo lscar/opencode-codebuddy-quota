@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test"
-import { freshness, paceHint, pctInt } from "./dialog-helpers"
+import { freshness, paceHint, pctInt, timeMarkerLeft } from "./dialog-helpers"
 import { normalizeQuota } from "./quota"
 import { formatCredits, formatPct, paceColor } from "./pace"
 
@@ -64,6 +64,13 @@ describe("dialog display helpers", () => {
     expect(pctInt(128.57)).toBe("100%")
     expect(pctInt(-5)).toBe("0%")
     expect(pctInt(null)).toBe("—")
+  })
+
+  it("places the time marker at the elapsed share, growing from the left", () => {
+    // The credit fill and the time marker share the same left-to-right axis.
+    expect(timeMarkerLeft(30)).toBe(30)
+    expect(timeMarkerLeft(80)).toBe(80)
+    expect(timeMarkerLeft(null)).toBe(0)
   })
 
   it("paceHint uses diff sign for direction (ahead still means slower)", () => {

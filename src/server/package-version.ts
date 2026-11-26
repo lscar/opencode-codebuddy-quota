@@ -1,4 +1,5 @@
 import { PACKAGE_NAME, PACKAGE_PREFIX, isVersion, packageSpec } from "./package-spec"
+import { timeoutSignal } from "./signal"
 
 /**
  * Looks up the newest `@ai-sdk/openai-compatible` build published under the
@@ -28,7 +29,7 @@ export async function latestTaggedVersion(deps: LatestVersionDeps = {}): Promise
     const response = await fetchImpl(REGISTRY_URL, {
       // The abbreviated doc is enough: it carries dist-tags and is far smaller.
       headers: { accept: "application/vnd.npm.install-v1+json" },
-      signal: AbortSignal.timeout(deps.timeoutMs ?? DEFAULT_TIMEOUT_MS),
+      signal: timeoutSignal(deps.timeoutMs ?? DEFAULT_TIMEOUT_MS),
     })
     if (!response.ok) return null
     const body = (await response.json()) as { "dist-tags"?: Record<string, unknown> }

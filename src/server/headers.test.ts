@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test"
 import type { SiteAuth } from "./login"
-import { apiHeaders, CLI_VERSION, refreshHeaders } from "./headers"
+import { apiHeaders, channelHeaders, CLI_VERSION, refreshHeaders } from "./headers"
 
 const base: SiteAuth = {
   id: "cn:uid-1",
@@ -53,6 +53,17 @@ describe("apiHeaders", () => {
 
   it("sets accept when provided", () => {
     expect(apiHeaders(base, { accept: "text/event-stream" })["Accept"]).toBe("text/event-stream")
+  })
+})
+
+describe("channelHeaders", () => {
+  it("mirrors x-request-id from the conversation message id", () => {
+    const h = channelHeaders()
+    expect(h["x-request-id"]).toBe(h["x-conversation-message-id"])
+    expect(h["x-conversation-id"]).toMatch(/^[0-9a-f]{32}$/)
+    expect(h["x-app"]).toBe("cli")
+    expect(h["x-ide-type"]).toBe("CLI")
+    expect(h["x-agent-intent"]).toBe("craft")
   })
 })
 

@@ -79,7 +79,11 @@ function timeProgress(
 ): number | null {
   if (startMs === null || endMs === null || atMs === null) return null
   if (endMs <= startMs) return null
-  return round2(((atMs - startMs) / (endMs - startMs)) * 100)
+  // A fetched time outside the cycle (clock skew, a stale cached reading carried
+  // across a reset) would otherwise render -87% or 110%, desyncing formatPct and
+  // paceColor from the already-clamped progress bar.
+  const pct = ((atMs - startMs) / (endMs - startMs)) * 100
+  return round2(Math.min(100, Math.max(0, pct)))
 }
 
 export function normalizeQuota(payload: unknown, ctx: NormalizeContext): Quota {

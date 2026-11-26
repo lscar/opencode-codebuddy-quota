@@ -12,7 +12,7 @@ import type { ModelsDevCatalog } from "./pricing"
  * degrade to "no prices" rather than break the plugin.
  */
 
-const KV_KEY = "models-dev:v2:catalog"
+const KV_KEY = "models-dev:v3:catalog"
 const DB_FILE = "opencode.db"
 /** Long enough to ride out another process's write lock, short enough not to stall a transform. */
 const BUSY_TIMEOUT_MS = 2_000
@@ -47,16 +47,16 @@ export function parseCatalogValue(value: string): ModelsDevCatalog | null {
 
 export interface ReadCatalogDeps {
   dbPath?: string
-  /** Seam for tests: given the database path, return the raw `kv.value` or null. */
-  readValue?: (dbPath: string) => string | null
+  /** Seam for tests: given the database path and kv key, return the raw `kv.value` or null. */
+  readValue?: (dbPath: string, key: string) => string | null
 }
 
-function readValueFromDatabase(dbPath: string): string | null {
+function readValueFromDatabase(dbPath: string, key: string): string | null {
   // Read-only: the plugin must never write to OpenCode's database.
   const db = new DatabaseSync(dbPath, { readOnly: true })
   try {
     db.exec(`pragma busy_timeout = ${BUSY_TIMEOUT_MS}`)
-    const row = db.prepare("select value from kv where key = ?").get(KV_KEY) as { value?: unknown } | undefined
+    const row = db.prepare("select value from kv where key = ?").get(key) as { value?: unknown } | undefined
     return typeof row?.value === "string" ? row.value : null
   } finally {
     db.close()
@@ -68,7 +68,7 @@ export function readModelsDevCatalog(deps: ReadCatalogDeps = {}): ModelsDevCatal
   const dbPath = deps.dbPath ?? join(storageDir(), DB_FILE)
   const read = deps.readValue ?? readValueFromDatabase
   try {
-    const value = read(dbPath)
+    const value = read(dbPath, KV_KEY)
     if (value === null) return null
     return parseCatalogValue(value)
   } catch {
